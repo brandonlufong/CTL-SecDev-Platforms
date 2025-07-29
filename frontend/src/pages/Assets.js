@@ -6,12 +6,19 @@ import { AuthContext } from '../context/AuthContext';
 import {
   FaEdit, FaTrash, FaPlus, FaSyncAlt, FaBug, FaDownload, FaSort, FaNetworkWired
 } from 'react-icons/fa';
+import Select from 'react-select';
 import Papa from 'papaparse'; // For CSV Export
 import '../App.css'
+import config from '../config';
 
 const assetTypes = ['Server', 'Database', 'Application', 'Network Device'];
 const serverStatuses = ['Online', 'Offline', 'Maintenance'];
 const serverTypes = ['Physical', 'Virtual'];
+const serverStates = ['Active', 'Passive'];
+const serverExposures = ['Public', 'Private'];
+const dbOptions = ['MySQL 8.0', 'PostgreSQL 13', 'MongoDB 5.0', 'Oracle 19c'];
+const webServerOptions = ['Apache 2.4', 'Nginx 1.18', 'IIS 10'];
+const osOptions = ['Windows 10', 'Ubuntu 22.04', 'macOS 13 Ventura', 'RedHat 9', 'CentOS 7'];
 
 const Assets = () => {
   const { token } = useContext(AuthContext);
@@ -20,6 +27,7 @@ const Assets = () => {
   const [filteredAssets, setFilteredAssets] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [currentAsset, setCurrentAsset] = useState({});
   const [editId, setEditId] = useState(null);
 
   const [form, setForm] = useState({
@@ -29,6 +37,8 @@ const Assets = () => {
     serverType: 'Physical',
     manufacturer: '',
     model: '',
+    dbType: '',
+    wsType: '',
     os: '',
     osVersion: '',
     status: 'Online',
@@ -39,6 +49,9 @@ const Assets = () => {
     serverAdministrator: '',
     description: '',
     owner: '',
+    state: 'Active',
+    exposure: 'Private',
+    activeProtocols: [''],
   });
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -59,7 +72,7 @@ const Assets = () => {
 
   const fetchAssets = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/assets', {
+      const res = await fetch(`${config.API_BASE_URL}/api/assets`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -128,6 +141,11 @@ const Assets = () => {
       serverAdministrator: '',
       description: '',
       owner: '',
+      state: 'Active',
+      exposure: 'Private',
+      activeProtocols: [''],
+      dbType: '',
+      wsType: ''
     });
     setIsEditing(false);
     setShowModal(true);
@@ -145,8 +163,8 @@ const Assets = () => {
     try {
       const method = isEditing ? 'PUT' : 'POST';
       const url = isEditing
-        ? `http://localhost:5000/api/assets/${editId}`
-        : 'http://localhost:5000/api/assets';
+        ? `${config.API_BASE_URL}/api/assets/${editId}`
+        : `${config.API_BASE_URL}/api/assets`;
 
       await fetch(url, {
         method,
@@ -169,7 +187,7 @@ const Assets = () => {
     if (!confirmed) return;
 
     try {
-      await fetch(`http://localhost:5000/api/assets/${id}`, {
+      await fetch(`${config.API_BASE_URL}/api/assets/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -187,7 +205,7 @@ const Assets = () => {
     setScanLogs([]);
 
     try {
-      const res = await fetch(`http://localhost:5000/api/scan/nmap`, {
+      const res = await fetch(`${config.API_BASE_URL}/api/scan/nmap`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -222,7 +240,7 @@ const Assets = () => {
     try {
       let completed = 0;
       for (const asset of assets) {
-        const res = await fetch(`http://localhost:5000/api/scan/nmap`, {
+        const res = await fetch(`${config.API_BASE_URL}/api/scan/nmap`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -237,7 +255,7 @@ const Assets = () => {
         const updatedStatus = res.ok && data.logs?.length > 0 ? 'Online' : 'Offline';
 
         // Update asset status
-        await fetch(`http://localhost:5000/api/assets/${asset._id}`, {
+        await fetch(`${config.API_BASE_URL}/api/assets/${asset._id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -510,6 +528,16 @@ const Assets = () => {
                   />
                 </Form.Group>
                 <Form.Group className="mb-3">
+                  <Form.Label>Type</Form.Label>
+                  <Form.Select name="type" value={form.type} onChange={handleChange}>
+                    {assetTypes.map(type => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </Form.Select>
+                </Form.Group>
+                <Form.Group className="mb-3">
                   <Form.Label>Server Type</Form.Label>
                   <Form.Select name="serverType" value={form.serverType} onChange={handleChange}>
                     {serverTypes.map(type => (
@@ -533,6 +561,30 @@ const Assets = () => {
                   <Form.Label>Administrator</Form.Label>
                   <Form.Control name="owner" value={form.owner} onChange={handleChange} />
                 </Form.Group>
+                <Form.Group className="mb-3">
+                  <Form.Label>State</Form.Label>
+                  <Form.Select name="state" value={form.state} onChange={handleChange}>
+                    {serverStates.map(state => (
+                      <option key={state} value={state}>
+                        {state}
+                      </option>
+                    ))}
+                  </Form.Select>
+                </Form.Group>
+                <Form.Group className="mb-3">
+                  <Form.Label>Exposure</Form.Label>
+                  <Form.Select name="exposure" value={form.exposure} onChange={handleChange}>
+                    {serverExposures.map(exposure => (
+                      <option key={exposure} value={exposure}>
+                        {exposure}
+                      </option>
+                    ))}
+                  </Form.Select>
+                </Form.Group>
+                <Form.Group className="mb-3">
+                  <Form.Label>Active Protocols</Form.Label>
+                  <Form.Control name="activeProtocols" value={form.activeProtocols} onChange={handleChange} />
+                </Form.Group>
               </Col>
               <Col md={6}>
                 {/* Right Form */}
@@ -544,14 +596,72 @@ const Assets = () => {
                   <Form.Label>Model</Form.Label>
                   <Form.Control name="model" value={form.model} onChange={handleChange} />
                 </Form.Group>
+                {/* <Form.Group>
+                  <Form.Label>Database Type & Version</Form.Label>
+                  <Form.Select name="dbopt" value={form.dbopt} onChange={handleChange}>
+                    <option value="">Select</option>
+                    {dbOptions.map(dbopt => (<option key={dbopt} value={dbopt}>{dbopt}</option>))}
+                  </Form.Select>
+                </Form.Group>
+                <Form.Group>
+                  <Form.Label>WebServer Type & Version</Form.Label>
+                  <Form.Select name="wsopt" value={form.wsopt} onChange={handleChange}>
+                    <option value="">Select</option>
+                    {webServerOptions.map(wsopt => <option key={wsopt} value={wsopt}>{wsopt}</option>)}
+                  </Form.Select>
+                </Form.Group> */}
                 <Form.Group className="mb-3">
-                  <Form.Label>OS</Form.Label>
-                  <Form.Control name="os" value={form.os} onChange={handleChange} />
+                  <Form.Label>Database Type & Version</Form.Label>
+                  {form && (
+                  <Form.Control
+                    type="text"
+                    list="dbVersionOptions"
+                    name="dbType"
+                    value={form.dbType || ''}
+                    onChange={handleChange}
+                    placeholder="Select or type Database Type & Version"
+                  />)}
+                  <datalist id="dbVersionOptions">
+                    {dbOptions.map(dbType => (<option key={dbType} value={dbType}>{dbType}</option>))}
+                  </datalist>
                 </Form.Group>
                 <Form.Group className="mb-3">
+                  <Form.Label>WebServer Type & Version</Form.Label>
+                  {form && (
+                  <Form.Control
+                    type="text"
+                    list="wsVersionOptions"
+                    name="wsType"
+                    value={form.wsType || ''}
+                    onChange={handleChange}
+                    placeholder="Select or type WebServer Type & Version"
+                  />)}
+                  <datalist id="wsVersionOptions">
+                    {webServerOptions.map(wsType => (<option key={wsType} value={wsType}>{wsType}</option>))}
+                  </datalist>
+                </Form.Group>
+                <Form.Group className="mb-3">
+                  <Form.Label>OS & Version</Form.Label>
+                  {form && (<Form.Control
+                    type="text"
+                    list="osVersionOptions"
+                    name="os"
+                    value={form.os}
+                    onChange={handleChange}
+                    placeholder="Select or type OS & Version"
+                  />)}
+                  <datalist id="osVersionOptions">
+                    {osOptions.map(os => (<option key={os} value={os}>{os}</option>))}
+                  </datalist>
+                </Form.Group>
+                {/* <Form.Group className="mb-3">
+                  <Form.Label>OS & Version</Form.Label>
+                  <Form.Control name="os" value={form.os} onChange={handleChange} />
+                </Form.Group> */}
+                {/* <Form.Group className="mb-3">
                   <Form.Label>OS Version</Form.Label>
                   <Form.Control name="osVersion" value={form.osVersion} onChange={handleChange} />
-                </Form.Group>
+                </Form.Group> */}
                 <Form.Group className="mb-3">
                   <Form.Label>CPU Capacity</Form.Label>
                   <Form.Control name="cpuCapacity" value={form.cpuCapacity} onChange={handleChange} />
@@ -570,6 +680,7 @@ const Assets = () => {
                 </Form.Group>
               </Col>
             </Row>
+            {console.log('Submitting form:', form)}
             <div className="text-end">
               <Button
                 variant="secondary"
@@ -636,11 +747,30 @@ const Assets = () => {
                             ? 'warning'
                             : 'secondary'
                         }
+                        title={`Severity Score: ${log.vulnerabilityScore}`}
                       >
                         {log.vulnerabilityScore || 0}
                       </Badge>
                     </td>
-                    <td>{log.vulnerabilities?.length || 0}</td>
+                    <td>
+                      {log.vulnerabilities && log.vulnerabilities.length > 0 ? (
+                        <ul style={{ margin: 0, paddingLeft: '1rem' }}>
+                          {log.vulnerabilities.map((vuln, i) => (
+                            <li key={i}>
+                              <a
+                                href={`https://cve.mitre.org/cgi-bin/cvename.cgi?name=${vuln}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                {vuln}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <span>No vulnerabilities</span>
+                      )}
+                    </td>
                     <td>{log.notes || '-'}</td>
                   </tr>
                 ))}

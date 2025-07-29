@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { Modal, Button, Table, Form, Badge, Dropdown, Pagination } from 'react-bootstrap';
 import { AuthContext } from '../context/AuthContext';
 import { FaPlus, FaEdit, FaTrash, FaSearch, FaSort } from 'react-icons/fa';
+import config from '../config';
 import '../App.css'; // Import custom styles
 
 const Vulnerabilities = () => {
@@ -31,7 +32,7 @@ const Vulnerabilities = () => {
   // Fetch all vulnerabilities
   const fetchVulnerabilities = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/vulnerabilities', {
+      const res = await fetch(`${config.API_BASE_URL}/api/vulnerabilities`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -44,7 +45,7 @@ const Vulnerabilities = () => {
   // Fetch all assets
   const fetchAssets = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/assets', {
+      const res = await fetch(`${config.API_BASE_URL}/api/assets`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -96,8 +97,8 @@ const Vulnerabilities = () => {
     try {
       const method = isEditing ? 'PUT' : 'POST';
       const url = isEditing
-        ? `http://localhost:5000/api/vulnerabilities/${editId}`
-        : 'http://localhost:5000/api/vulnerabilities';
+        ? `${config.API_BASE_URL}/api/vulnerabilities/${editId}`
+        : `${config.API_BASE_URL}api/vulnerabilities`;
 
       await fetch(url, {
         method,
@@ -120,7 +121,7 @@ const Vulnerabilities = () => {
     if (!confirmed) return;
 
     try {
-      await fetch(`http://localhost:5000/api/vulnerabilities/${id}`, {
+      await fetch(`${config.API_BASE_URL}/api/vulnerabilities/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -132,7 +133,7 @@ const Vulnerabilities = () => {
 
   const handleStatusToggle = async (id, newStatus) => {
     try {
-      await fetch(`http://localhost:5000/api/vulnerabilities/${id}`, {
+      await fetch(`${config.API_BASE_URL}/api/vulnerabilities/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

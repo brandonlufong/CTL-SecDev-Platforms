@@ -1,6 +1,7 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { Container, Form, Button, Card, Alert } from 'react-bootstrap';
 import { AuthContext } from '../context/AuthContext';
+import config from '../config';
 
 const Profile = () => {
   const { user, token, setUser } = useContext(AuthContext);
@@ -23,7 +24,7 @@ const Profile = () => {
     setError('');
 
     try {
-      const res = await fetch('http://localhost:5000/api/auth/me', {
+      const res = await fetch(`${config.API_BASE_URL}/api/auth/me`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

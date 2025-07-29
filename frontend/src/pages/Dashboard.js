@@ -32,6 +32,7 @@ import {
   FaChevronUp,
   FaSearch,
 } from 'react-icons/fa';
+import config from '../config';
 
 ChartJS.register(ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
 
@@ -55,7 +56,7 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        const res = await fetch('http://localhost:5000/api/dashboard/summary', {
+        const res = await fetch(`${config.API_BASE_URL}/api/dashboard/summary`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await res.json();
@@ -72,7 +73,7 @@ const Dashboard = () => {
     const fetchScans = async () => {
       setLoadingScans(true);
       try {
-        const res = await fetch('http://localhost:5000/api/scan/latest', {
+        const res = await fetch(`${config.API_BASE_URL}/api/scan/latest`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await res.json();
@@ -91,7 +92,7 @@ const Dashboard = () => {
     if (!loadingScans) return;
     const interval = setInterval(async () => {
       try {
-        const res = await fetch('http://localhost:5000/api/scan/progress', {
+        const res = await fetch(`${config.API_BASE_URL}/api/scan/progress`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await res.json();
@@ -111,7 +112,7 @@ const Dashboard = () => {
 
     setLoadingScans(true);
     try {
-      const res = await fetch('http://localhost:5000/api/scan/quick', {
+      const res = await fetch(`${config.API_BASE_URL}/api/scan/quick`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });

@@ -1,15 +1,3 @@
-// const mongoose = require('mongoose');
-
-// const assetSchema = new mongoose.Schema({
-//   name: { type: String, required: true },
-//   ip: { type: String, required: true },
-//   type: { type: String, enum: ['Server', 'Database', 'Application', 'Network Device'], default: 'Server' },
-//   description: String,
-//   owner: String,
-//   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
-// }, { timestamps: true });
-
-// module.exports = mongoose.model('Asset', assetSchema);
 const mongoose = require('mongoose');
 
 const AssetSchema = new mongoose.Schema(
@@ -41,14 +29,40 @@ const AssetSchema = new mongoose.Schema(
       enum: ['Physical', 'Virtual'],
       default: 'Physical',
     },
+    dbType: {
+      type: String,
+      // enum: ['MySQL 8.0', 'PostgreSQL 13', 'MongoDB 5.0', 'Oracle 19c'],
+      // default: 'MySQL 8.0',
+    },
+    wsType: {
+      type: String,
+      // enum: ['Apache 2.4', 'Nginx 1.18', 'IIS 10'],
+      // default: 'Apache 2.4',
+    },
+    os: {
+      type: String,
+      // enum: ['Windows Server 2019', 'Ubuntu 20.04', 'CentOS 8', 'Red Hat Enterprise Linux 8'],
+    },
     manufacturer: { type: String, trim: true },
     model: { type: String, trim: true },
-    os: { type: String, trim: true },
-    osVersion: { type: String, trim: true },
     status: {
       type: String,
       enum: ['Online', 'Offline', 'Maintenance'],
       default: 'Online',
+    },
+    state: {
+      type: String,
+      enum: ['Active', 'Passive'],
+      default: 'Active',
+    },
+    exposure: {
+      type: String,
+      enum: ['Private', 'Public'],
+      default: 'Private',
+    },
+    activeProtocols: {
+      type: [String],
+      default: ['HTTP', 'HTTPS'],
     },
     memory: { type: String, trim: true }, // Example: '16 GB'
     diskSpace: { type: String, trim: true }, // Example: '500 GB'

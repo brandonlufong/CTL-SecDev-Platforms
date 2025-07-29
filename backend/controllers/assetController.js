@@ -92,6 +92,11 @@ exports.searchAssets = async (req, res) => {
         { hostDepartment: { $regex: query, $options: 'i' } },
         { serverAdministrator: { $regex: query, $options: 'i' } },
         { owner: { $regex: query, $options: 'i' } },
+        { state: { $regex: query, $options: 'i' } },
+        { exposure: { $regex: query, $options: 'i' } },
+        { activeProtocols: { $elemMatch: { $regex: query, $options: 'i' } } },
+        { wsType: { $regex: query, $options: 'i' } },
+        { dbType: { $regex: query, $options: 'i' } },
       ],
     });
     res.json(results);
