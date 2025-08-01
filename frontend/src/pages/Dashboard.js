@@ -42,6 +42,7 @@ const Dashboard = () => {
   const [summary, setSummary] = useState({
     totalVulnerabilities: 0,
     openVulnerabilities: 0,
+    resolvedVulnerabilities: 0,
     totalAssets: 0,
     severityCount: {},
     statusCount: {},
@@ -144,7 +145,7 @@ const Dashboard = () => {
   );
 
   return (
-    <Container fluid className="p-4" style={{ backgroundColor: '#F1F8FD', minHeight: '100vh' }}>
+    <Container fluid className="container mt-4" style={{ backgroundColor: '#F1F8FD', minHeight: '100vh' }}>
       <h3 style={{ color: '#1594EA' }} className="mb-4 d-flex align-items-center">
         <FaBug className="me-2"/> Dashboard Overview
       </h3>
@@ -289,8 +290,8 @@ const Dashboard = () => {
         </div>
       </Collapse>
 
-      <Row className="g-4">
-        <Col md={4}>
+      <Row className="mb-4 g-4">
+        <Col md={3}>
           <Card className="shadow-sm border-0 rounded-4" style={{ backgroundColor: '#1594EA', color: '#fff' }}>
             <Card.Body>
               <Card.Title className="fw-bold">Total Vulnerabilities</Card.Title>
@@ -298,7 +299,15 @@ const Dashboard = () => {
             </Card.Body>
           </Card>
         </Col>
-        <Col md={4}>
+        <Col md={3}>
+          <Card className="shadow-sm border-0 rounded-4" style={{ backgroundColor: '#1594EA', color: '#fff' }}>
+            <Card.Body>
+              <Card.Title className="fw-bold">Total Assets</Card.Title>
+              <h3>{summary.totalAssets}</h3>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={3}>
           <Card className="shadow-sm border-0 rounded-4" style={{ backgroundColor: '#dc3545', color: '#fff' }}>
             <Card.Body>
               <Card.Title className="fw-bold">Open Vulnerabilities</Card.Title>
@@ -306,11 +315,11 @@ const Dashboard = () => {
             </Card.Body>
           </Card>
         </Col>
-        <Col md={4}>
-          <Card className="shadow-sm border-0 rounded-4" style={{ backgroundColor: '#198754', color: '#fff' }}>
+        <Col md={3}>
+          <Card className="text-white bg-success shadow-sm border-0 rounded-4">
             <Card.Body>
-              <Card.Title className="fw-bold">Total Assets</Card.Title>
-              <h3>{summary.totalAssets}</h3>
+              <Card.Title className="fw-bold">Resolved Vulnerabilities</Card.Title>
+              <h4>{summary.resolvedVulnerabilities}</h4>
             </Card.Body>
           </Card>
         </Col>
@@ -336,6 +345,7 @@ const Dashboard = () => {
       <h4 style={{ color: '#1594EA' }} className="mt-5">Vulnerability Overview</h4>
       <Row>
         <Col md={6}>
+        <Card className="shadow-sm border-0 rounded-4 p-3">
           <h6 className="text-center text-muted">By Severity</h6>
           <Pie
             data={{
@@ -350,9 +360,11 @@ const Dashboard = () => {
             }}
             options={{ responsive: true }}
           />
+        </Card>
         </Col>
 
         <Col md={6}>
+        <Card className="shadow-sm border-0 rounded-4 p-3">
           <h6 className="text-center text-muted">By Status</h6>
           <Bar
             data={{
@@ -368,10 +380,18 @@ const Dashboard = () => {
             options={{
               responsive: true,
               scales: {
-                y: { beginAtZero: true },
+                y: { 
+                  beginAtZero: true,
+                  // ticks: { stepSize: 1 },
+                  // grid: { color: '#e5e5e5' },
+                },
+                // x: {
+                //   grid: { display: true },
+                // },
               },
             }}
           />
+        </Card>
         </Col>
       </Row>
     </Container>
