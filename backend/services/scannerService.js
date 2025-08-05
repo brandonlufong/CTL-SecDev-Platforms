@@ -56,13 +56,14 @@
 const { exec } = require('child_process');
 const parseNmapOutput = require('../utils/parseNmap');
 const { analyzeScan } = require('./vulnerabilityDetection'); // ⬅️ Import the detection service
+const Vulnerability = require('../models/Vulnerability');
 
 /**
  * Executes Nmap scan, parses output, enriches each result with detection metadata.
  */
 exports.runNmapScan = (ip, onProgress) => {
   return new Promise((resolve, reject) => {
-    const cmd = `nmap -sS -Pn ${ip}`;
+    const cmd = `nmap -sS -sV --version-light -T4 -Pn ${ip}`;
 
     if (onProgress) onProgress(0, `Starting scan for ${ip}`);
 
@@ -88,6 +89,54 @@ exports.runNmapScan = (ip, onProgress) => {
           };
         })
       );
+
+      // Step 3: Auto-link vulnerabilities to DB
+      await Promise.all(enriched.map(async (result) => {
+        if (result.vulnerabilities && result.vulnerabilities.length > 0) {
+          for (const vuln of result.vulnerabilities) {
+            const {
+              cve,
+              title,
+              description,
+              severity,
+              remediation,
+              exploitAvailable,
+              references
+            } = vuln;
+
+            const existing = await Vulnerability.findOne({
+              cve,
+              assetId,
+            });
+
+            if (existing) {
+              // Update existing
+              existing.severity = severity;
+              existing.description = description;
+              existing.remediation = remediation;
+              existing.exploitAvailable = exploitAvailable;
+              existing.references = references;
+              existing.discoveredDate = new Date();
+              await existing.save();
+            } else {
+              // Create new
+              await Vulnerability.create({
+                title,
+                cve,
+                description,
+                severity,
+                remediation,
+                exploitAvailable,
+                references,
+                discoveredDate: new Date(),
+                scanResultId: result._id, // if you're saving scanResult later
+                assetId,
+                status: 'open',
+              });
+            }
+          }
+        }
+      }));
 
       if (onProgress) onProgress(100, `Completed scan for ${ip}`);
       resolve(enriched);

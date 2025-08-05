@@ -105,7 +105,7 @@ exports.runQuickScan = async (req, res) => {
             { title: vulnTitle, asset: asset._id },
             {
               title: vulnTitle,
-              severity: 'Medium',
+              severity: result.vulnerabilityScore >= 7 ? 'High' : result.vulnerabilityScore >= 4 ? 'Medium' : 'Low',
               description: vulnTitle,
               asset: asset._id,
               scanResult: scan._id,

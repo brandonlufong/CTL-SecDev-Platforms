@@ -20,6 +20,11 @@ const Vulnerabilities = () => {
     status: 'Open',
     asset: '',
     description: '',
+    cve: '',
+    discoveredDate: '',
+    remediation: '',
+    exploitAvailable: false,
+    references: '',
   });
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -60,7 +65,14 @@ const Vulnerabilities = () => {
     fetchVulnerabilities();
   }, []);
 
-  const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value });
+  // const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value });
+  const handleChange = e => {
+    const { name, value, type, checked } = e.target;
+    setForm(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value,
+    }));
+  };
 
   const openCreateModal = () => {
     setForm({
@@ -69,6 +81,11 @@ const Vulnerabilities = () => {
       status: 'Open',
       asset: '',
       description: '',
+      cve: '',
+      discoveredDate: '',
+      remediation: '',
+      exploitAvailable: false,
+      references: '',
     });
     setIsEditing(false);
     setShowModal(true);
@@ -81,6 +98,11 @@ const Vulnerabilities = () => {
       status: vuln.status,
       asset: vuln.asset ? vuln.asset._id : '',
       description: vuln.description || '',
+      cve: vuln.cve || '',
+      discoveredDate: vuln.discoveredDate ? vuln.discoveredDate.substring(0, 10) : '',
+      remediation: vuln.remediation || '',
+      exploitAvailable: vuln.exploitAvailable || false,
+      references: vuln.references || '',
     });
     setEditId(vuln._id);
     setIsEditing(true);
@@ -98,7 +120,7 @@ const Vulnerabilities = () => {
       const method = isEditing ? 'PUT' : 'POST';
       const url = isEditing
         ? `${config.API_BASE_URL}/api/vulnerabilities/${editId}`
-        : `${config.API_BASE_URL}api/vulnerabilities`;
+        : `${config.API_BASE_URL}/api/vulnerabilities`;
 
       await fetch(url, {
         method,
@@ -253,6 +275,9 @@ const Vulnerabilities = () => {
             <th>Severity</th>
             <th>Status</th>
             <th>Asset</th>
+            <th>CVE</th>
+            <th>Discovery Date</th>
+            <th>Exploit</th>
             <th>Description</th>
             <th className="text-center">Actions</th>
           </tr>
@@ -289,6 +314,9 @@ const Vulnerabilities = () => {
                 </Dropdown>
               </td>
               <td>{v.asset ? `${v.asset.name} (${v.asset.ip})` : 'N/A'}</td>
+              <td>{v.cve}</td>
+              <td>{v.discoveredDate?.slice(0, 10)}</td>
+              <td>{v.exploitAvailable ? 'Yes' : 'No'}</td>
               <td>{v.description}</td>
               <td className="text-center">
                 <div className="d-flex justify-content-center gap-2">
@@ -355,6 +383,11 @@ const Vulnerabilities = () => {
             </Form.Group>
 
             <Form.Group className="mb-3">
+              <Form.Label>CVE ID</Form.Label>
+              <Form.Control name="cve" value={form.cve} onChange={handleChange} />
+            </Form.Group>
+
+            <Form.Group className="mb-3">
               <Form.Label>Severity</Form.Label>
               <Form.Select
                 name="severity"
@@ -379,6 +412,11 @@ const Vulnerabilities = () => {
                 <option>In Progress</option>
                 <option>Resolved</option>
               </Form.Select>
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Label>Discovery Date</Form.Label>
+              <Form.Control type="date" name="discoveredDate" value={form.discoveredDate} onChange={handleChange} />
             </Form.Group>
 
             <Form.Group className="mb-3">
@@ -407,6 +445,26 @@ const Vulnerabilities = () => {
                 value={form.description}
                 onChange={handleChange}
               />
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Label>Remediation</Form.Label>
+              <Form.Control as="textarea" rows={2} name="remediation" value={form.remediation} onChange={handleChange} />
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Check
+                type="checkbox"
+                label="Exploit Available"
+                name="exploitAvailable"
+                checked={form.exploitAvailable}
+                onChange={handleChange}
+              />
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Label>References (comma-separated)</Form.Label>
+              <Form.Control name="references" value={form.references} onChange={handleChange} />
             </Form.Group>
 
             <div className="text-end">

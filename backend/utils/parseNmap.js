@@ -35,36 +35,72 @@ module.exports = function parseNmapOutput(output) {
   const results = [];
 
   let inPortSection = false;
+  let currentResult = null;
 
   for (let line of lines) {
     line = line.trim();
 
+    // Start of port section
     if (line.startsWith('PORT')) {
       inPortSection = true;
       continue;
     }
 
-    if (inPortSection && line && /^[0-9]/.test(line)) {
-      const parts = line.split(/\s+/);
-      const [portProto, state, service] = parts;
+    // End of port section
+    if (inPortSection && line === '') {
+      inPortSection = false;
+      continue;
+    }
 
+    // Parse port line
+    if (inPortSection && /^[0-9]/.test(line)) {
+      const parts = line.split(/\s+/);
+      const [portProto, state, service, ...rest] = parts;
       const [port, protocol] = portProto.split('/');
 
-      results.push({
+      const versionInfo = rest.join(' '); // Might contain product/version/CPE info
+
+      currentResult = {
         port: parseInt(port, 10),
         protocol,
         state,
         service,
-        product: '',        // Extend here with NSE parsing if needed
+        product: '',
         version: '',
         cpe: '',
-        vulnerabilityScore: 5, // Optional, or infer from severity later
+        vulnerabilityScore: 0,
         notes: '',
-        vulnerabilities: [],  // Add if detected from script output
-      });
+        vulnerabilities: [],
+      };
+
+      // Attempt to parse product/version from versionInfo
+      const versionMatch = versionInfo.match(/(.+?)\s+([0-9][\w\.\-]+)/);
+      if (versionMatch) {
+        currentResult.product = versionMatch[1].trim();
+        currentResult.version = versionMatch[2].trim();
+      } else {
+        currentResult.product = versionInfo.trim();
+      }
+
+      results.push(currentResult);
     }
 
-    if (inPortSection && line === '') break;
+    // Parse CPE or vulnerabilities under each port
+    if (currentResult && line.startsWith('|')) {
+      if (line.includes('CPE:')) {
+        const cpeMatch = line.match(/CPE:\s*(cpe:\/[^\s]+)/i);
+        if (cpeMatch) currentResult.cpe = cpeMatch[1];
+      }
+
+      if (line.includes('CVE')) {
+        const cveMatches = [...line.matchAll(/(CVE-\d{4}-\d{4,7})/gi)];
+        const cves = cveMatches.map(match => match[1].toUpperCase());
+        currentResult.vulnerabilities.push(...cves);
+
+        // Score is just a count for now — you could fetch real CVSS later
+        currentResult.vulnerabilityScore = cves.length;
+      }
+    }
   }
 
   return results;
