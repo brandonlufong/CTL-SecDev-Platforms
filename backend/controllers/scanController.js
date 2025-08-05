@@ -1,130 +1,291 @@
 const Asset = require('../models/Asset');
 const ScanResult = require('../models/ScanResult');
 const Vulnerability = require('../models/Vulnerability');
-const { runNmapScan } = require('../services/scannerService');
+const { runNmapScan, runBatchScan, getScanStats, validateIP, pingTest } = require('../services/scannerService');
 const progressTracker = require('../services/scanProgress');
 
+/**
+ * Enhanced Scan Controller with comprehensive vulnerability management
+ */
+
+/**
+ * Scan a single asset with enhanced vulnerability detection
+ */
 exports.scanAsset = async (req, res) => {
   try {
-    const { assetId } = req.body;
+    const { assetId, scanType = 'comprehensive' } = req.body;
+    
+    // Validate asset
     const asset = await Asset.findById(assetId);
-    if (!asset) return res.status(404).json({ message: 'Asset not found' });
-
-    const scanLogs = await runNmapScan(asset.ip);
-    const savedResults = [];
-
-    for (const result of scanLogs) {
-      const scan = await ScanResult.create({
-        ...result,
-        asset: asset._id,
-      });
-
-      const vulnerabilityIds = [];
-
-      for (const vulnTitle of result.vulnerabilities || []) {
-        const vuln = await Vulnerability.findOneAndUpdate(
-          { title: vulnTitle, asset: asset._id },
-          {
-            title: vulnTitle,
-            severity: 'Medium',
-            description: vulnTitle,
-            asset: asset._id,
-            scanResult: scan._id,
-          },
-          { upsert: true, new: true }
-        );
-
-        vulnerabilityIds.push(vuln._id);
-      }
-
-      scan.vulnerabilities = vulnerabilityIds;
-      await scan.save();
-
-      // ✅ Populate asset name and vulnerabilities before pushing
-      const populatedScan = await ScanResult.findById(scan._id)
-        .populate('asset', 'name ip')
-        .populate('vulnerabilities', 'title severity status');
-      savedResults.push(populatedScan);
+    if (!asset) {
+      return res.status(404).json({ message: 'Asset not found' });
     }
 
-    res.json({
-      success: true,
-      logs: savedResults,
-      message: `Scan completed for asset: ${asset.name}`,
+    // Validate IP address
+    if (!validateIP(asset.ip)) {
+      return res.status(400).json({ message: 'Invalid IP address format' });
+    }
+
+    console.log(`Starting ${scanType} scan for asset: ${asset.name} (${asset.ip})`);
+
+    // Run the enhanced scan
+    const scanResults = await runNmapScan(asset.ip, {
+      scanType,
+      includeVulnScripts: true,
+      onProgress: (percent, message) => {
+        // Could emit socket.io events here for real-time updates
+        console.log(`Scan progress: ${percent}% - ${message}`);
+      }
     });
-  } catch (err) {
-    console.error('Scan error:', err);
-    res.status(500).json({ message: 'Scan failed', error: err.message });
+
+    const savedResults = [];
+    const createdVulnerabilities = [];
+
+    // Process each scan result
+    for (const scanResult of scanResults) {
+      // Create scan result record
+      const savedScanResult = await ScanResult.create({
+        port: scanResult.port,
+        protocol: scanResult.protocol,
+        state: scanResult.state,
+        service: scanResult.service,
+        product: scanResult.product,
+        version: scanResult.version,
+        extraInfo: scanResult.extraInfo,
+        cpe: scanResult.cpe,
+        vulnerabilityScore: scanResult.vulnerabilityScore,
+        confidence: scanResult.confidence,
+        detectionMethods: scanResult.detectionMethods,
+        scanEnhancement: scanResult.scanEnhancement,
+        scannedAt: scanResult.scannedAt,
+        asset: asset._id,
+        vulnerabilities: [] // Will be populated after creating vulnerabilities
+      });
+
+      // Process detected vulnerabilities
+      if (scanResult.detectionDetails && scanResult.detectionDetails.length > 0) {
+        const vulnerabilityIds = [];
+
+        for (const vulnDetail of scanResult.detectionDetails) {
+          try {
+            // Check if vulnerability already exists for this asset
+            let existingVuln = await Vulnerability.findOne({
+              $or: [
+                { cve: vulnDetail.cve, asset: asset._id },
+                { title: vulnDetail.title, asset: asset._id }
+              ]
+            });
+
+            if (existingVuln) {
+              // Update existing vulnerability
+              existingVuln.severity = vulnDetail.severity || existingVuln.severity;
+              existingVuln.description = vulnDetail.description || existingVuln.description;
+              existingVuln.cvssScore = vulnDetail.cvssScore || existingVuln.cvssScore;
+              existingVuln.remediation = vulnDetail.remediation || existingVuln.remediation;
+              existingVuln.exploitAvailable = vulnDetail.exploitAvailable !== undefined ? vulnDetail.exploitAvailable : existingVuln.exploitAvailable;
+              existingVuln.references = vulnDetail.references || existingVuln.references;
+              existingVuln.discoveredDate = new Date();
+              existingVuln.scanResult = savedScanResult._id;
+
+              // Update status if it was previously resolved but now detected again
+              if (existingVuln.status === 'Resolved' || existingVuln.status === 'Closed') {
+                existingVuln.status = 'Open';
+              }
+
+              await existingVuln.save();
+              vulnerabilityIds.push(existingVuln._id);
+              
+              console.log(`Updated existing vulnerability: ${existingVuln.title}`);
+            } else {
+              // Create new vulnerability
+              const newVuln = await Vulnerability.create({
+                title: vulnDetail.title || `${vulnDetail.cve} - ${scanResult.service} vulnerability`,
+                cve: vulnDetail.cve || null,
+                severity: vulnDetail.severity || 'Medium',
+                description: vulnDetail.description || 'Vulnerability detected during automated scan',
+                cvssScore: vulnDetail.cvssScore || 0,
+                remediation: vulnDetail.remediation || 'Review vulnerability details and apply appropriate patches',
+                exploitAvailable: vulnDetail.exploitAvailable || false,
+                references: vulnDetail.references || [],
+                discoveredDate: new Date(),
+                status: 'Open',
+                asset: asset._id,
+                scanResult: savedScanResult._id,
+                cpeMatch: scanResult.cpe,
+                affectedProducts: scanResult.product ? [scanResult.product] : []
+              });
+
+              vulnerabilityIds.push(newVuln._id);
+              createdVulnerabilities.push(newVuln);
+              
+              console.log(`Created new vulnerability: ${newVuln.title}`);
+            }
+          } catch (error) {
+            console.error(`Error processing vulnerability ${vulnDetail.title}:`, error);
+          }
+        }
+
+        // Update scan result with vulnerability references
+        savedScanResult.vulnerabilities = vulnerabilityIds;
+        await savedScanResult.save();
+      }
+
+      // Populate the scan result for response
+      const populatedScanResult = await ScanResult.findById(savedScanResult._id)
+        .populate('asset', 'name ip type')
+        .populate('vulnerabilities', 'title cve severity cvssScore status');
+
+      savedResults.push(populatedScanResult);
+    }
+
+    // Update asset with last scan date
+    asset.lastScanDate = new Date();
+    await asset.save();
+
+    const response = {
+      success: true,
+      message: `Scan completed for asset: ${asset.name}`,
+      asset: {
+        id: asset._id,
+        name: asset.name,
+        ip: asset.ip,
+        type: asset.type
+      },
+      scanSummary: {
+        totalPorts: scanResults.length,
+        openPorts: scanResults.filter(r => r.state === 'open').length,
+        totalVulnerabilities: createdVulnerabilities.length,
+        highestSeverity: getHighestSeverity(createdVulnerabilities),
+        riskLevel: calculateOverallRisk(scanResults)
+      },
+      scanResults: savedResults,
+      newVulnerabilities: createdVulnerabilities.length
+    };
+
+    res.json(response);
+
+  } catch (error) {
+    console.error('Scan error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Scan failed', 
+      error: error.message 
+    });
   }
 };
 
-exports.getLatestScans = async (req, res) => {
-  try {
-    const latestScans = await ScanResult.find()
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .populate('asset', 'name ip')
-      .populate('vulnerabilities', 'title severity status');
-
-    res.json(latestScans);
-  } catch (err) {
-    console.error('Error fetching latest scans:', err);
-    res.status(500).json({ message: 'Failed to retrieve latest scans.' });
-  }
-};
-
+/**
+ * Run quick scan across all assets
+ */
 exports.runQuickScan = async (req, res) => {
   const io = req.app.get('io');
 
   try {
     progressTracker.reset();
-    const assets = await Asset.find();
-    const allLogs = [];
+    const assets = await Asset.find({ status: 'Online' }); // Only scan online assets
+    
+    if (assets.length === 0) {
+      return res.status(400).json({ message: 'No online assets found to scan' });
+    }
+
+    const allResults = [];
+    const allVulnerabilities = [];
+    let totalScanned = 0;
+
+    console.log(`Starting quick scan for ${assets.length} assets`);
 
     for (let i = 0; i < assets.length; i++) {
       const asset = assets[i];
       const percent = Math.round(((i + 1) / assets.length) * 100);
-      const message = `Scanning ${asset.name}`;
+      const message = `Scanning ${asset.name} (${asset.ip})`;
+      
       progressTracker.setProgress(percent, message);
-
       if (io) io.emit('scanProgress', { percent, message, active: true });
 
-      const scanResults = await runNmapScan(asset.ip);
-
-      // Save each scan result
-      for (const result of scanResults) {
-        const scan = await ScanResult.create({
-          ...result,
-          asset: asset._id,
-        });
-
-        const vulnerabilityIds = [];
-
-        for (const vulnTitle of result.vulnerabilities || []) {
-          const vuln = await Vulnerability.findOneAndUpdate(
-            { title: vulnTitle, asset: asset._id },
-            {
-              title: vulnTitle,
-              severity: result.vulnerabilityScore >= 7 ? 'High' : result.vulnerabilityScore >= 4 ? 'Medium' : 'Low',
-              description: vulnTitle,
-              asset: asset._id,
-              scanResult: scan._id,
-            },
-            { upsert: true, new: true }
-          );
-
-          vulnerabilityIds.push(vuln._id);
+      try {
+        // Run connectivity test first
+        const isReachable = await pingTest(asset.ip);
+        if (!isReachable) {
+          console.log(`Asset ${asset.name} (${asset.ip}) is not reachable, skipping...`);
+          continue;
         }
 
-        scan.vulnerabilities = vulnerabilityIds;
-        await scan.save();
+        // Run quick scan
+        const scanResults = await runNmapScan(asset.ip, {
+          scanType: 'quick',
+          includeVulnScripts: true
+        });
 
-        // ✅ Populate asset and vulnerabilities
-        const populatedScan = await ScanResult.findById(scan._id)
-          .populate('asset', 'name ip')
-          .populate('vulnerabilities', 'title severity status');
+        // Process results similar to single asset scan
+        for (const scanResult of scanResults) {
+          const savedScanResult = await ScanResult.create({
+            ...scanResult,
+            asset: asset._id,
+            vulnerabilities: []
+          });
 
-        allLogs.push(populatedScan);
+          // Process vulnerabilities
+          if (scanResult.detectionDetails && scanResult.detectionDetails.length > 0) {
+            const vulnerabilityIds = [];
+
+            for (const vulnDetail of scanResult.detectionDetails) {
+              try {
+                const existingVuln = await Vulnerability.findOne({
+                  $or: [
+                    { cve: vulnDetail.cve, asset: asset._id },
+                    { title: vulnDetail.title, asset: asset._id }
+                  ]
+                });
+
+                let vulnerability;
+                if (existingVuln) {
+                  // Update existing
+                  existingVuln.discoveredDate = new Date();
+                  existingVuln.scanResult = savedScanResult._id;
+                  if (existingVuln.status === 'Resolved') {
+                    existingVuln.status = 'Open';
+                  }
+                  await existingVuln.save();
+                  vulnerability = existingVuln;
+                } else {
+                  // Create new
+                  vulnerability = await Vulnerability.create({
+                    title: vulnDetail.title || `${vulnDetail.cve} - ${scanResult.service} vulnerability`,
+                    cve: vulnDetail.cve || null,
+                    severity: vulnDetail.severity || 'Medium',
+                    description: vulnDetail.description || 'Vulnerability detected during quick scan',
+                    cvssScore: vulnDetail.cvssScore || 0,
+                    remediation: vulnDetail.remediation || 'Review and apply security patches',
+                    exploitAvailable: vulnDetail.exploitAvailable || false,
+                    references: vulnDetail.references || [],
+                    discoveredDate: new Date(),
+                    status: 'Open',
+                    asset: asset._id,
+                    scanResult: savedScanResult._id
+                  });
+                  allVulnerabilities.push(vulnerability);
+                }
+
+                vulnerabilityIds.push(vulnerability._id);
+              } catch (error) {
+                console.error(`Error processing vulnerability in quick scan:`, error);
+              }
+            }
+
+            savedScanResult.vulnerabilities = vulnerabilityIds;
+            await savedScanResult.save();
+          }
+
+          allResults.push(savedScanResult);
+        }
+
+        // Update asset scan date
+        asset.lastScanDate = new Date();
+        await asset.save();
+        totalScanned++;
+
+      } catch (error) {
+        console.error(`Error scanning asset ${asset.name}:`, error);
       }
     }
 
@@ -132,27 +293,232 @@ exports.runQuickScan = async (req, res) => {
     if (io) {
       io.emit('scanProgress', {
         percent: 100,
-        message: 'Scan complete',
-        active: false,
+        message: `Quick scan completed - ${totalScanned} assets scanned`,
+        active: false
       });
     }
 
-    res.json({ message: 'Quick scan finished.', logs: allLogs });
-  } catch (err) {
-    console.error('Quick scan error:', err);
+    const response = {
+      success: true,
+      message: `Quick scan completed for ${totalScanned} assets`,
+      summary: {
+        totalAssets: assets.length,
+        scannedAssets: totalScanned,
+        totalVulnerabilities: allVulnerabilities.length,
+        newVulnerabilities: allVulnerabilities.length,
+        highestSeverity: getHighestSeverity(allVulnerabilities)
+      },
+      results: allResults.slice(0, 10) // Return first 10 results
+    };
+
+    res.json(response);
+
+  } catch (error) {
+    console.error('Quick scan error:', error);
     progressTracker.reset();
     if (io) {
       io.emit('scanProgress', {
         percent: 0,
-        message: 'Scan failed',
-        active: false,
+        message: 'Quick scan failed',
+        active: false
       });
     }
 
-    res.status(500).json({ message: 'Scan failed' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Quick scan failed', 
+      error: error.message 
+    });
   }
 };
 
-exports.getScanProgress = (req, res) => {
-  res.json(progressTracker.getProgress());
+/**
+ * Get latest scan results
+ */
+exports.getLatestScans = async (req, res) => {
+  try {
+    const { limit = 10, assetId } = req.query;
+    
+    const filter = assetId ? { asset: assetId } : {};
+    
+    const latestScans = await ScanResult.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit))
+      .populate('asset', 'name ip type')
+      .populate('vulnerabilities', 'title cve severity cvssScore status');
+
+    res.json({
+      success: true,
+      scans: latestScans,
+      total: latestScans.length
+    });
+
+  } catch (error) {
+    console.error('Error fetching latest scans:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to retrieve latest scans',
+      error: error.message 
+    });
+  }
 };
+
+/**
+ * Get scan progress
+ */
+exports.getScanProgress = (req, res) => {
+  try {
+    const progress = progressTracker.getProgress();
+    const stats = getScanStats();
+    
+    res.json({
+      success: true,
+      progress,
+      stats
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to get scan progress',
+      error: error.message 
+    });
+  }
+};
+
+/**
+ * Test asset connectivity
+ */
+exports.testConnectivity = async (req, res) => {
+  try {
+    const { assetId } = req.params;
+    
+    const asset = await Asset.findById(assetId);
+    if (!asset) {
+      return res.status(404).json({ message: 'Asset not found' });
+    }
+
+    const isReachable = await pingTest(asset.ip);
+    
+    res.json({
+      success: true,
+      asset: {
+        id: asset._id,
+        name: asset.name,
+        ip: asset.ip
+      },
+      reachable: isReachable,
+      testedAt: new Date()
+    });
+
+  } catch (error) {
+    console.error('Connectivity test error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Connectivity test failed',
+      error: error.message 
+    });
+  }
+};
+
+/**
+ * Run batch scan for multiple assets
+ */
+exports.runBatchScan = async (req, res) => {
+  try {
+    const { assetIds, scanType = 'quick' } = req.body;
+    
+    if (!assetIds || !Array.isArray(assetIds) || assetIds.length === 0) {
+      return res.status(400).json({ message: 'Asset IDs array is required' });
+    }
+
+    // Fetch assets
+    const assets = await Asset.find({ _id: { $in: assetIds } });
+    if (assets.length === 0) {
+      return res.status(404).json({ message: 'No valid assets found' });
+    }
+
+    const ipList = assets.map(asset => asset.ip);
+    
+    console.log(`Starting batch scan for ${assets.length} assets`);
+
+    // Run batch scan
+    const { results, errors } = await runBatchScan(ipList, {
+      scanType,
+      maxConcurrent: 2,
+      onProgress: (percent, message) => {
+        console.log(`Batch scan progress: ${percent}% - ${message}`);
+      }
+    });
+
+    // Process successful results
+    const processedResults = [];
+    for (const result of results) {
+      const asset = assets.find(a => a.ip === result.ip);
+      if (asset && result.result) {
+        // Process scan results similar to single scan
+        // This is a simplified version - you might want to extract this to a helper function
+        for (const scanResult of result.result) {
+          const savedScanResult = await ScanResult.create({
+            ...scanResult,
+            asset: asset._id
+          });
+          processedResults.push(savedScanResult);
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Batch scan completed`,
+      summary: {
+        totalAssets: assets.length,
+        successfulScans: results.length,
+        failedScans: errors.length,
+        totalResults: processedResults.length
+      },
+      results: processedResults,
+      errors: errors
+    });
+
+  } catch (error) {
+    console.error('Batch scan error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Batch scan failed',
+      error: error.message 
+    });
+  }
+};
+
+// Helper functions
+
+/**
+ * Get the highest severity from a list of vulnerabilities
+ */
+function getHighestSeverity(vulnerabilities) {
+  if (!vulnerabilities || vulnerabilities.length === 0) return 'None';
+
+  const severityOrder = ['Critical', 'High', 'Medium', 'Low', 'Informational'];
+  
+  for (const severity of severityOrder) {
+    if (vulnerabilities.some(v => v.severity === severity)) {
+      return severity;
+    }
+  }
+
+  return 'Unknown';
+}
+
+/**
+ * Calculate overall risk level from scan results
+ */
+function calculateOverallRisk(scanResults) {
+  if (!scanResults || scanResults.length === 0) return 'Low';
+
+  const maxScore = Math.max(...scanResults.map(r => r.vulnerabilityScore || 0));
+  
+  if (maxScore >= 9.0) return 'Critical';
+  if (maxScore >= 7.0) return 'High';
+  if (maxScore >= 4.0) return 'Medium';
+  return 'Low';
+}
