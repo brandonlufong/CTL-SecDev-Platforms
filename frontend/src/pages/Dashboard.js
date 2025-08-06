@@ -32,6 +32,7 @@ import {
   FaChevronUp,
   FaSearch,
 } from 'react-icons/fa';
+import io from 'socket.io-client';
 import config from '../config';
 
 ChartJS.register(ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
@@ -53,6 +54,7 @@ const Dashboard = () => {
   const [showScans, setShowScans] = useState(false);
   const [progress, setProgress] = useState({ percent: 0, message: '', active: false });
   const [searchTerm, setSearchTerm] = useState(''); // ✅ Added for filter
+  const [socket, setSocket] = useState(null);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -89,6 +91,39 @@ const Dashboard = () => {
     fetchScans();
   }, [token]);
 
+  // WebSocket connection for real-time scan progress
+  useEffect(() => {
+    const socketConnection = io(config.API_BASE_URL.replace('/api', ''), {
+      auth: {
+        token: token
+      }
+    });
+    
+    socketConnection.on('connect', () => {
+      console.log('Connected to WebSocket server');
+    });
+
+    socketConnection.on('scanProgress', (progressData) => {
+      setProgress(progressData);
+      if (!progressData.active) {
+        setLoadingScans(false);
+        // Refresh scan results when scan is complete
+        fetchScans();
+      }
+    });
+
+    socketConnection.on('disconnect', () => {
+      console.log('Disconnected from WebSocket server');
+    });
+
+    setSocket(socketConnection);
+
+    return () => {
+      socketConnection.disconnect();
+    };
+  }, [token]);
+
+  // Fallback polling for progress (in case WebSocket fails)
   useEffect(() => {
     if (!loadingScans) return;
     const interval = setInterval(async () => {

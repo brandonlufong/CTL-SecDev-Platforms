@@ -25,6 +25,9 @@ const Vulnerabilities = () => {
     remediation: '',
     exploitAvailable: false,
     references: '',
+    cvssScore: '',
+    cpeMatch: '',
+    affectedProducts: [],
   });
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -103,6 +106,9 @@ const Vulnerabilities = () => {
       remediation: vuln.remediation || '',
       exploitAvailable: vuln.exploitAvailable || false,
       references: vuln.references || '',
+      cvssScore: vuln.cvssScore || '',
+      cpeMatch: vuln.cpeMatch || '',
+      affectedProducts: vuln.affectedProducts || [],
     });
     setEditId(vuln._id);
     setIsEditing(true);
@@ -243,12 +249,25 @@ const Vulnerabilities = () => {
         <Form.Select
           value={filterStatus}
           onChange={e => setFilterStatus(e.target.value)}
-          style={{ maxWidth: '150px' }}
+          style={{ maxWidth: '180px' }}
         >
           <option value="">All Statuses</option>
           <option value="Open">Open</option>
           <option value="In Progress">In Progress</option>
           <option value="Resolved">Resolved</option>
+          <option value="False Positive">False Positive</option>
+          <option value="Not Applicable">Not Applicable</option>
+          <option value="Duplicate">Duplicate</option>
+          <option value="Wont Fix">Won't Fix</option>
+          <option value="Mitigated">Mitigated</option>
+          <option value="Remediated">Remediated</option>
+          <option value="Pending">Pending</option>
+          <option value="Under Review">Under Review</option>
+          <option value="Acknowledged">Acknowledged</option>
+          <option value="Reviewed">Reviewed</option>
+          <option value="Escalated">Escalated</option>
+          <option value="Deferred">Deferred</option>
+          <option value="Closed">Closed</option>
         </Form.Select>
         <Dropdown>
           <Dropdown.Toggle variant="outline-secondary" size="sm">
@@ -273,6 +292,7 @@ const Vulnerabilities = () => {
           <tr>
             <th>Title</th>
             <th>Severity</th>
+            <th>CVSS Score</th>
             <th>Status</th>
             <th>Asset</th>
             <th>CVE</th>
@@ -288,13 +308,33 @@ const Vulnerabilities = () => {
               <td>{v.title}</td>
               <td>{renderSeverityBadge(v.severity)}</td>
               <td>
+                <Badge
+                  bg={
+                    v.cvssScore >= 9
+                      ? 'danger'
+                      : v.cvssScore >= 7
+                      ? 'warning'
+                      : v.cvssScore >= 4
+                      ? 'info'
+                      : v.cvssScore > 0
+                      ? 'secondary'
+                      : 'light'
+                  }
+                  className="rounded-pill px-3"
+                >
+                  {v.cvssScore ? v.cvssScore.toFixed(1) : 'N/A'}
+                </Badge>
+              </td>
+              <td>
                 <Dropdown>
                   <Dropdown.Toggle
                     variant={
-                      v.status === 'Resolved'
+                      v.status === 'Resolved' || v.status === 'Remediated' || v.status === 'Closed'
                         ? 'success'
-                        : v.status === 'In Progress'
+                        : v.status === 'In Progress' || v.status === 'Under Review' || v.status === 'Pending'
                         ? 'warning'
+                        : v.status === 'False Positive' || v.status === 'Not Applicable' || v.status === 'Duplicate'
+                        ? 'secondary'
                         : 'danger'
                     }
                     size="sm"
@@ -302,7 +342,7 @@ const Vulnerabilities = () => {
                     {v.status}
                   </Dropdown.Toggle>
                   <Dropdown.Menu>
-                    {['Open', 'In Progress', 'Resolved'].map(status => (
+                    {['Open', 'In Progress', 'Resolved', 'False Positive', 'Not Applicable', 'Duplicate', 'Wont Fix', 'Mitigated', 'Remediated', 'Pending', 'Under Review', 'Acknowledged', 'Reviewed', 'Escalated', 'Deferred', 'Closed'].map(status => (
                       <Dropdown.Item
                         key={status}
                         onClick={() => handleStatusToggle(v._id, status)}
@@ -402,6 +442,20 @@ const Vulnerabilities = () => {
             </Form.Group>
 
             <Form.Group className="mb-3">
+              <Form.Label>CVSS Score (0.0 - 10.0)</Form.Label>
+              <Form.Control
+                type="number"
+                min="0"
+                max="10"
+                step="0.1"
+                name="cvssScore"
+                value={form.cvssScore}
+                onChange={handleChange}
+                placeholder="e.g., 7.5"
+              />
+            </Form.Group>
+
+            <Form.Group className="mb-3">
               <Form.Label>Status</Form.Label>
               <Form.Select
                 name="status"
@@ -411,6 +465,19 @@ const Vulnerabilities = () => {
                 <option>Open</option>
                 <option>In Progress</option>
                 <option>Resolved</option>
+                <option>False Positive</option>
+                <option>Not Applicable</option>
+                <option>Duplicate</option>
+                <option>Wont Fix</option>
+                <option>Mitigated</option>
+                <option>Remediated</option>
+                <option>Pending</option>
+                <option>Under Review</option>
+                <option>Acknowledged</option>
+                <option>Reviewed</option>
+                <option>Escalated</option>
+                <option>Deferred</option>
+                <option>Closed</option>
               </Form.Select>
             </Form.Group>
 

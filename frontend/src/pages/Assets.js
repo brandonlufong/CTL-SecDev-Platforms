@@ -64,6 +64,7 @@ const Assets = () => {
   const [scanningAssetId, setScanningAssetId] = useState(null);
   const [scanningAll, setScanningAll] = useState(false); // For scan all
   const [scanAllProgress, setScanAllProgress] = useState(0); // Progress counter
+  const [pingingAssets, setPingingAssets] = useState(false); // For ping all assets
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -89,6 +90,26 @@ const Assets = () => {
 
   const handleChange = e =>
     setForm({ ...form, [e.target.name]: e.target.value });
+
+  // Enhanced search function using backend search endpoint
+  const searchAssets = async (query) => {
+    if (!query.trim()) {
+      setFilteredAssets(assets);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${config.API_BASE_URL}/api/assets/search?q=${encodeURIComponent(query)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setFilteredAssets(data);
+    } catch (error) {
+      console.error('Search failed', error);
+      // Fallback to local search
+      applyFilters();
+    }
+  };
 
   const applyFilters = () => {
     let filtered = [...assets];
@@ -119,9 +140,22 @@ const Assets = () => {
   };
 
   useEffect(() => {
+    const delayedSearch = setTimeout(() => {
+      if (searchTerm) {
+        searchAssets(searchTerm);
+      } else {
+        applyFilters();
+      }
+    }, 300); // Debounce search
+
+    setCurrentPage(1); // Reset to first page on filters change
+    return () => clearTimeout(delayedSearch);
+  }, [searchTerm]);
+
+  useEffect(() => {
     applyFilters();
     setCurrentPage(1); // Reset to first page on filters change
-  }, [searchTerm, statusFilter, typeFilter, sortField, assets]);
+  }, [statusFilter, typeFilter, sortField, assets]);
 
   const openCreateModal = () => {
     setForm({
@@ -216,11 +250,14 @@ const Assets = () => {
 
       const data = await res.json();
 
-      if (res.ok && data.logs?.length > 0) {
+      if (res.ok && data.success) {
         setScannedAssetName(name);
-        setScanLogs(data.logs);
-        setSuccess('Scan completed successfully.');
+        setScanLogs(data.logs || []);
+        setSuccess(data.message || 'Scan completed successfully.');
         setShowScanModal(true);
+        
+        // Refresh assets to get updated vulnerability counts
+        fetchAssets();
       } else {
         setError(data.message || 'No vulnerabilities found or scan failed.');
       }
@@ -229,6 +266,37 @@ const Assets = () => {
       setError('Scan failed due to server error.');
     } finally {
       setScanningAssetId(null);
+    }
+  };
+
+  // New ping functionality using the backend ping endpoint
+  const pingAllAssets = async () => {
+    setPingingAssets(true);
+    setError('');
+    setSuccess('');
+    
+    try {
+      const res = await fetch(`${config.API_BASE_URL}/api/assets/ping`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (res.ok) {
+        const updatedAssets = await res.json();
+        setAssets(updatedAssets);
+        setFilteredAssets(updatedAssets);
+        setSuccess('Asset reachability check completed successfully.');
+      } else {
+        setError('Failed to ping assets.');
+      }
+    } catch (err) {
+      console.error('Ping failed', err);
+      setError('Failed to ping assets due to server error.');
+    } finally {
+      setPingingAssets(false);
     }
   };
 
@@ -310,6 +378,24 @@ const Assets = () => {
             className="rounded-pill shadow-sm d-flex align-items-center gap-2 mt-2 mt-md-0"
           >
             <FaPlus /> Add New
+          </Button>
+          <Button
+            style={{ borderColor: '#17a2b8', color: '#17a2b8' }}
+            size="sm"
+            variant="outline-info"
+            onClick={pingAllAssets}
+            disabled={pingingAssets}
+            className="rounded-pill d-flex align-items-center gap-2 mt-2 mt-md-0"
+          >
+            {pingingAssets ? (
+              <>
+                <Spinner size="sm" animation="border" /> Pinging Assets...
+              </>
+            ) : (
+              <>
+                <FaSyncAlt /> Ping All
+              </>
+            )}
           </Button>
           <Button
             style={{ borderColor: 'green', color: 'green' }}
