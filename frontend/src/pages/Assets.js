@@ -507,7 +507,7 @@ const Assets = () => {
           <Modal.Title>{isEditing ? 'Edit Server Asset' : 'Add Server Asset'}</Modal.Title>
         </Modal.Header>
         <Modal.Body style={{ backgroundColor: '#F0F9FF' }}>
-<       Form onSubmit={handleSubmit}>
+          <Form onSubmit={handleSubmit}>
             <Row>
               <Col md={6}>
                 {/* Left Form */}
@@ -755,17 +755,25 @@ const Assets = () => {
                     <td>
                       {log.vulnerabilities && log.vulnerabilities.length > 0 ? (
                         <ul style={{ margin: 0, paddingLeft: '1rem' }}>
-                          {log.vulnerabilities.map((vuln, i) => (
-                            <li key={i}>
-                              <a
-                                href={`https://cve.mitre.org/cgi-bin/cvename.cgi?name=${vuln}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                {vuln}
-                              </a>
-                            </li>
-                          ))}
+                          {log.vulnerabilities.map((vuln, i) => {
+                            const label = typeof vuln === 'string' ? vuln : (vuln?.title || '');
+                            const isCve = /^CVE-\d{4}-\d{4,7}$/i.test(label);
+                            return (
+                              <li key={i}>
+                                {isCve ? (
+                                  <a
+                                    href={`https://cve.mitre.org/cgi-bin/cvename.cgi?name=${label.toUpperCase()}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    {label.toUpperCase()}
+                                  </a>
+                                ) : (
+                                  <span>{label || '-'}</span>
+                                )}
+                              </li>
+                            );
+                          })}
                         </ul>
                       ) : (
                         <span>No vulnerabilities</span>
