@@ -122,15 +122,18 @@ const Dashboard = () => {
     return () => clearInterval(interval);
   }, [loadingScans, token]);
  
+    const [scanType, setScanType] = useState('quick');
+
   const handleQuickScan = async () => {
-const confirmed = window.confirm('Run a quick scan for all assets?');
+    const confirmed = window.confirm(`Run a ${scanType} scan for all assets?`);
     if (!confirmed) return;
 
     setLoadingScans(true);
     try {
       const res = await fetch(`${config.API_BASE_URL}/api/scan/quick`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ scanType })
       });
       const data = await res.json();
       const logs = data.logs || data.results || data.scans || [];
@@ -138,7 +141,7 @@ const confirmed = window.confirm('Run a quick scan for all assets?');
       alert('Scan completed!');
     } catch (err) {
       console.error(err);
-      alert('Quick scan failed.');
+      alert('Scan failed.');
     } finally {
       setLoadingScans(false);
       setProgress({ percent: 0, message: '', active: false });
@@ -167,24 +170,38 @@ const confirmed = window.confirm('Run a quick scan for all assets?');
       </h3>
 
       <div className="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
-        <Button
-          variant="primary"
-          onClick={handleQuickScan}
-          disabled={loadingScans}
-          className="d-flex align-items-center gap-2 rounded-pill shadow-sm"
-          style={{ backgroundColor: '#1594EA', border: 'none' }}
-        >
-          {loadingScans ? (
-            <>
-              <Spinner size="sm" animation="border" />
-              Scanning...
-            </>
-          ) : (
-            <>
-              <FaSyncAlt /> Run Quick Scan
-            </>
-          )}
-        </Button>
+        <div className="d-flex align-items-center gap-2">
+          <Form.Select
+            size="sm"
+            value={scanType}
+            onChange={(e) => setScanType(e.target.value)}
+            className="rounded-pill"
+            style={{ maxWidth: 180 }}
+          >
+            <option value="quick">Quick</option>
+            <option value="comprehensive">Comprehensive</option>
+            <option value="stealth">Stealth</option>
+            <option value="udp">UDP</option>
+          </Form.Select>
+          <Button
+            variant="primary"
+            onClick={handleQuickScan}
+            disabled={loadingScans}
+            className="d-flex align-items-center gap-2 rounded-pill shadow-sm"
+            style={{ backgroundColor: '#1594EA', border: 'none' }}
+          >
+            {loadingScans ? (
+              <>
+                <Spinner size="sm" animation="border" />
+                Scanning...
+              </>
+            ) : (
+              <>
+                <FaSyncAlt /> Run Scan
+              </>
+            )}
+          </Button>
+        </div>
 
         <Button
           variant="light"

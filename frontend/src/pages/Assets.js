@@ -199,6 +199,8 @@ const Assets = () => {
     }
   };
 
+  const [assetScanType, setAssetScanType] = useState('quick');
+
   const startScan = async asset => {
     const { _id, name } = asset;
     setScanningAssetId(_id);
@@ -207,13 +209,13 @@ const Assets = () => {
     setScanLogs([]);
 
     try {
-      const res = await fetch(`${config.API_BASE_URL}/api/scan/nmap`, {
+      const res = await fetch(`${config.API_BASE_URL}/api/scan/asset`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ assetId: _id }),
+        body: JSON.stringify({ assetId: _id, scanType: assetScanType }),
       });
 
       const data = await res.json();
@@ -293,7 +295,7 @@ const Assets = () => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ assetIds, scanType: 'quick' })
+        body: JSON.stringify({ assetIds, scanType: assetScanType })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Batch scan failed');
@@ -519,23 +521,36 @@ const Assets = () => {
                   >
                     <FaTrash /> Delete
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline-warning"
-                    onClick={() => startScan(asset)}
-                    disabled={scanningAssetId === asset._id}
-                    className="d-flex align-items-center gap-1"
-                  >
-                    {scanningAssetId === asset._id ? (
-                      <>
-                        <Spinner size="sm" animation="border" /> Scanning...
-                      </>
-                    ) : (
-                      <>
-                        <FaBug /> Scan
-                      </>
-                    )}
-                  </Button>
+                  <div className="d-flex align-items-center gap-2">
+                    <Form.Select
+                      size="sm"
+                      value={assetScanType}
+                      onChange={(e) => setAssetScanType(e.target.value)}
+                      style={{ maxWidth: 140 }}
+                    >
+                      <option value="quick">Quick</option>
+                      <option value="comprehensive">Comprehensive</option>
+                      <option value="stealth">Stealth</option>
+                      <option value="udp">UDP</option>
+                    </Form.Select>
+                    <Button
+                      size="sm"
+                      variant="outline-warning"
+                      onClick={() => startScan(asset)}
+                      disabled={scanningAssetId === asset._id}
+                      className="d-flex align-items-center gap-1"
+                    >
+                      {scanningAssetId === asset._id ? (
+                        <>
+                          <Spinner size="sm" animation="border" /> Scanning...
+                        </>
+                      ) : (
+                        <>
+                          <FaBug /> Scan
+                        </>
+                      )}
+                    </Button>
+                  </div>
                   <Button
                     size="sm"
                     variant="outline-secondary"

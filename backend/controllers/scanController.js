@@ -152,6 +152,7 @@ exports.scanAsset = async (req, res) => {
 exports.runQuickScan = async (req, res) => {
   const io = req.app.get('io');
   try {
+    const { scanType = 'quick' } = req.body || {};
     progressTracker.reset();
     const assets = await Asset.find({ status: 'Online' });
     if (assets.length === 0) {
@@ -162,7 +163,7 @@ exports.runQuickScan = async (req, res) => {
     const allVulnerabilities = [];
     let totalScanned = 0;
 
-    console.log(`Starting quick scan for ${assets.length} assets`);
+    console.log(`Starting ${scanType} scan for ${assets.length} assets`);
 
     for (let i = 0; i < assets.length; i++) {
       const asset = assets[i];
@@ -179,7 +180,7 @@ exports.runQuickScan = async (req, res) => {
         }
 
         const scanResults = await runNmapScan(asset.ip, {
-          scanType: 'quick',
+          scanType,
           includeVulnScripts: true
         });
 
