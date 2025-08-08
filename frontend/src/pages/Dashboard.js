@@ -33,6 +33,7 @@ import {
   FaSearch,
 } from 'react-icons/fa';
 import config from '../config';
+import { io } from 'socket.io-client';
 
 ChartJS.register(ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
 
@@ -78,7 +79,8 @@ const Dashboard = () => {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await res.json();
-        setLatestScans(data);
+        const scans = data.scans || data.logs || data || [];
+        setLatestScans(scans);
       } catch (err) {
         console.error('Failed to load scan results');
       } finally {
@@ -90,21 +92,37 @@ const Dashboard = () => {
   }, [token]);
 
   useEffect(() => {
-    if (!loadingScans) return;
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`${config.API_BASE_URL}/api/scan/progress`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        setProgress(data);
-        if (!data.active) clearInterval(interval);
-      } catch (err) {
-        console.error('Error fetching progress');
-        clearInterval(interval);
-      }
-    }, 2000);
-    return () => clearInterval(interval);
+    // Socket.IO real-time progress (non-intrusive, preserves UI)
+    const socket = io(config.API_BASE_URL, { transports: ['websocket', 'polling'] });
+    socket.on('scanProgress', (p) => {
+      if (p && typeof p === 'object') setProgress(p);
+    });
+
+    // Fallback polling when loading scans
+    let interval;
+    if (loadingScans) {
+      interval = setInterval(async () => {
+        try {
+          const res = await fetch(`${config.API_BASE_URL}/api/scan/progress`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const data = await res.json();
+          const p = data.progress || data;
+          setProgress(p);
+          if (p && p.active === false) {
+            clearInterval(interval);
+          }
+        } catch (err) {
+          console.error('Error fetching progress');
+          if (interval) clearInterval(interval);
+        }
+      }, 2000);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+      socket.close();
+    };
   }, [loadingScans, token]);
 
   const handleQuickScan = async () => {
@@ -118,7 +136,8 @@ const Dashboard = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      setLatestScans(data.logs || []);
+      const scans = data.scans || data.results || data.logs || [];
+      setLatestScans(scans);
       alert('Scan completed!');
     } catch (err) {
       console.error(err);

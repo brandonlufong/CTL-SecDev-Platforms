@@ -205,20 +205,21 @@ const Assets = () => {
     setScanLogs([]);
 
     try {
-      const res = await fetch(`${config.API_BASE_URL}/api/scan/nmap`, {
+      const res = await fetch(`${config.API_BASE_URL}/api/scan/asset`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ assetId: _id }),
+        body: JSON.stringify({ assetId: _id, scanType: 'comprehensive' }),
       });
 
       const data = await res.json();
 
-      if (res.ok && data.logs?.length > 0) {
+      const results = data.scanResults || data.logs || [];
+      if (res.ok && results.length > 0) {
         setScannedAssetName(name);
-        setScanLogs(data.logs);
+        setScanLogs(results);
         setSuccess('Scan completed successfully.');
         setShowScanModal(true);
       } else {
@@ -240,19 +241,20 @@ const Assets = () => {
     try {
       let completed = 0;
       for (const asset of assets) {
-        const res = await fetch(`${config.API_BASE_URL}/api/scan/nmap`, {
+        const res = await fetch(`${config.API_BASE_URL}/api/scan/asset`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`
           },
-          body: JSON.stringify({ assetId: asset._id }),
+          body: JSON.stringify({ assetId: asset._id, scanType: 'quick' }),
         });
 
         const data = await res.json();
 
         // Determine status based on scan result
-        const updatedStatus = res.ok && data.logs?.length > 0 ? 'Online' : 'Offline';
+        const results = data.scanResults || data.logs || [];
+        const updatedStatus = res.ok && results.length > 0 ? 'Online' : 'Offline';
 
         // Update asset status
         await fetch(`${config.API_BASE_URL}/api/assets/${asset._id}`, {
@@ -507,7 +509,7 @@ const Assets = () => {
           <Modal.Title>{isEditing ? 'Edit Server Asset' : 'Add Server Asset'}</Modal.Title>
         </Modal.Header>
         <Modal.Body style={{ backgroundColor: '#F0F9FF' }}>
-<       Form onSubmit={handleSubmit}>
+          <Form onSubmit={handleSubmit}>
             <Row>
               <Col md={6}>
                 {/* Left Form */}
