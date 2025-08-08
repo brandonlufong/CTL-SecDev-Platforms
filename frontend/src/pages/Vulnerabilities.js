@@ -5,6 +5,20 @@ import { FaPlus, FaEdit, FaTrash, FaSearch, FaSort } from 'react-icons/fa';
 import config from '../config';
 import '../App.css'; // Import custom styles
 
+// Expanded statuses to mirror backend model
+const ALL_VULN_STATUSES = [
+  'Open', 'In Progress', 'Resolved', 'False Positive', 'Not Applicable', 'Duplicate',
+  'Wont Fix', 'Mitigated', 'Remediated', 'Pending', 'Under Review', 'Acknowledged',
+  'Reviewed', 'Escalated', 'Deferred', 'Closed'
+];
+
+const statusToVariant = (status) => {
+  if (status === 'Resolved' || status === 'Remediated' || status === 'Closed' || status === 'Mitigated') return 'success';
+  if (status === 'In Progress' || status === 'Pending' || status === 'Under Review' || status === 'Acknowledged' || status === 'Reviewed' || status === 'Escalated' || status === 'Deferred') return 'warning';
+  if (status === 'False Positive' || status === 'Not Applicable' || status === 'Duplicate' || status === 'Wont Fix') return 'secondary';
+  return 'danger'; // Open and others default to danger
+};
+
 const Vulnerabilities = () => {
   const { token } = useContext(AuthContext);
   const [showModal, setShowModal] = useState(false);
@@ -246,9 +260,9 @@ const Vulnerabilities = () => {
           style={{ maxWidth: '150px' }}
         >
           <option value="">All Statuses</option>
-          <option value="Open">Open</option>
-          <option value="In Progress">In Progress</option>
-          <option value="Resolved">Resolved</option>
+          {ALL_VULN_STATUSES.map(s => (
+            <option key={s} value={s}>{s}</option>
+          ))}
         </Form.Select>
         <Dropdown>
           <Dropdown.Toggle variant="outline-secondary" size="sm">
@@ -290,19 +304,13 @@ const Vulnerabilities = () => {
               <td>
                 <Dropdown>
                   <Dropdown.Toggle
-                    variant={
-                      v.status === 'Resolved'
-                        ? 'success'
-                        : v.status === 'In Progress'
-                        ? 'warning'
-                        : 'danger'
-                    }
+                    variant={statusToVariant(v.status)}
                     size="sm"
                   >
                     {v.status}
                   </Dropdown.Toggle>
                   <Dropdown.Menu>
-                    {['Open', 'In Progress', 'Resolved'].map(status => (
+                    {ALL_VULN_STATUSES.map(status => (
                       <Dropdown.Item
                         key={status}
                         onClick={() => handleStatusToggle(v._id, status)}
@@ -408,9 +416,9 @@ const Vulnerabilities = () => {
                 value={form.status}
                 onChange={handleChange}
               >
-                <option>Open</option>
-                <option>In Progress</option>
-                <option>Resolved</option>
+                {ALL_VULN_STATUSES.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
               </Form.Select>
             </Form.Group>
 

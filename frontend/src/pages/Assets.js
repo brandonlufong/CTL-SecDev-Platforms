@@ -753,19 +753,33 @@ const Assets = () => {
                       </Badge>
                     </td>
                     <td>
-                      {log.vulnerabilities && log.vulnerabilities.length > 0 ? (
+                      {Array.isArray(log.vulnerabilities) && log.vulnerabilities.length > 0 ? (
                         <ul style={{ margin: 0, paddingLeft: '1rem' }}>
-                          {log.vulnerabilities.map((vuln, i) => (
-                            <li key={i}>
-                              <a
-                                href={`https://cve.mitre.org/cgi-bin/cvename.cgi?name=${vuln}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                {vuln}
-                              </a>
-                            </li>
-                          ))}
+                          {log.vulnerabilities.map((v, i) => {
+                            const isObject = v && typeof v === 'object';
+                            const title = isObject ? (v.title || v.cve || 'Untitled') : String(v);
+                            const severity = isObject ? v.severity : null;
+                            const status = isObject ? v.status : null;
+                            return (
+                              <li key={i} className="d-flex align-items-center gap-2">
+                                <span>{title}</span>
+                                {severity && (
+                                  <Badge bg={
+                                    severity === 'Critical' ? 'danger' :
+                                    severity === 'High' ? 'warning' :
+                                    severity === 'Medium' ? 'info' : 'secondary'
+                                  }>
+                                    {severity}
+                                  </Badge>
+                                )}
+                                {status && (
+                                  <Badge bg={status === 'Resolved' ? 'success' : status === 'In Progress' ? 'warning' : 'danger'}>
+                                    {status}
+                                  </Badge>
+                                )}
+                              </li>
+                            );
+                          })}
                         </ul>
                       ) : (
                         <span>No vulnerabilities</span>
