@@ -507,7 +507,7 @@ const Assets = () => {
           <Modal.Title>{isEditing ? 'Edit Server Asset' : 'Add Server Asset'}</Modal.Title>
         </Modal.Header>
         <Modal.Body style={{ backgroundColor: '#F0F9FF' }}>
-<       Form onSubmit={handleSubmit}>
+          <Form onSubmit={handleSubmit}>
             <Row>
               <Col md={6}>
                 {/* Left Form */}
@@ -757,13 +757,17 @@ const Assets = () => {
                         <ul style={{ margin: 0, paddingLeft: '1rem' }}>
                           {log.vulnerabilities.map((vuln, i) => (
                             <li key={i}>
-                              <a
-                                href={`https://cve.mitre.org/cgi-bin/cvename.cgi?name=${vuln}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                {vuln}
-                              </a>
+                              {/^CVE-\d{4}-\d{4,7}$/i.test(vuln) ? (
+                                <a
+                                  href={`https://cve.mitre.org/cgi-bin/cvename.cgi?name=${vuln.toUpperCase()}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  {vuln.toUpperCase()}
+                                </a>
+                              ) : (
+                                <span>{vuln}</span>
+                              )}
                             </li>
                           ))}
                         </ul>

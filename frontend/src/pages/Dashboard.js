@@ -33,6 +33,7 @@ import {
   FaSearch,
 } from 'react-icons/fa';
 import config from '../config';
+import { io } from 'socket.io-client';
 
 ChartJS.register(ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
 
@@ -90,6 +91,19 @@ const Dashboard = () => {
   }, [token]);
 
   useEffect(() => {
+    // Socket.io subscription for real-time scan progress
+    const socket = io(config.API_BASE_URL, { transports: ['websocket'] });
+    const onScanProgress = (data) => setProgress(data);
+
+    socket.on('scanProgress', onScanProgress);
+
+    return () => {
+      socket.off('scanProgress', onScanProgress);
+      socket.close();
+    };
+    }, [token]);
+
+  useEffect(() => {
     if (!loadingScans) return;
     const interval = setInterval(async () => {
       try {
@@ -106,9 +120,9 @@ const Dashboard = () => {
     }, 2000);
     return () => clearInterval(interval);
   }, [loadingScans, token]);
-
+ 
   const handleQuickScan = async () => {
-    const confirmed = window.confirm('Run a quick scan for all assets?');
+const confirmed = window.confirm('Run a quick scan for all assets?');
     if (!confirmed) return;
 
     setLoadingScans(true);
