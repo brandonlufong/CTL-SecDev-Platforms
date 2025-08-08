@@ -45,10 +45,11 @@ const scanResultSchema = new mongoose.Schema(
     service: String,
     product: String,
     version: String,
+    extraInfo: String,
     cpe: String,
     scanType: {
       type: String,
-      enum: ['quick', 'full', 'custom'],
+      enum: ['quick', 'full', 'custom', 'comprehensive', 'stealth', 'udp', 'vulnerability'],
       default: 'quick',
     },
     vulnerabilityScore: {
@@ -56,6 +57,9 @@ const scanResultSchema = new mongoose.Schema(
       min: 0,
       max: 10,
     },
+    confidence: { type: Number, min: 0, max: 100 },
+    detectionMethods: { type: [String], default: [] },
+    scanEnhancement: { type: [String], default: [] },
     notes: String,
     scanCommand: String,
     rawOutput: String,
