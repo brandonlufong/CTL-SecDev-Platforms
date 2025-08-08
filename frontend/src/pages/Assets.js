@@ -64,6 +64,8 @@ const Assets = () => {
   const [scanningAssetId, setScanningAssetId] = useState(null);
   const [scanningAll, setScanningAll] = useState(false); // For scan all
   const [scanAllProgress, setScanAllProgress] = useState(0); // Progress counter
+  const [batchScanning, setBatchScanning] = useState(false);
+  const [testingAssetId, setTestingAssetId] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -234,6 +236,7 @@ const Assets = () => {
   };
 
   const scanAllAssets = async () => {
+    // legacy per-asset loop retained as "Update Assets Statuses"
     setScanningAll(true);
     setScanAllProgress(0);
     setError('');
@@ -241,21 +244,19 @@ const Assets = () => {
     try {
       let completed = 0;
       for (const asset of assets) {
-        const res = await fetch(`${config.API_BASE_URL}/api/scan/nmap`, {
+        const res = await fetch(`${config.API_BASE_URL}/api/scan/asset`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`
           },
-          body: JSON.stringify({ assetId: asset._id }),
+          body: JSON.stringify({ assetId: asset._id, scanType: 'quick' }),
         });
 
         const data = await res.json();
+        const scanResults = data.scanResults || data.logs || data.results || [];
+        const updatedStatus = res.ok && scanResults.length > 0 ? 'Online' : 'Offline';
 
-        // Determine status based on scan result
-        const updatedStatus = res.ok && data.logs?.length > 0 ? 'Online' : 'Offline';
-
-        // Update asset status
         await fetch(`${config.API_BASE_URL}/api/assets/${asset._id}`, {
           method: 'PUT',
           headers: {
@@ -265,12 +266,10 @@ const Assets = () => {
           body: JSON.stringify({ ...asset, status: updatedStatus }),
         });
 
-        // Increment progress
         completed += 1;
         setScanAllProgress(completed);
       }
 
-      // Refresh assets list
       fetchAssets();
       setSuccess('All assets statuses have been updated.');
     } catch (err) {
@@ -278,7 +277,51 @@ const Assets = () => {
       setError('Failed to update assets.');
     } finally {
       setScanningAll(false);
-      setScanAllProgress(0); // Reset progress
+      setScanAllProgress(0);
+    }
+  };
+
+  const runBatchScan = async () => {
+    setBatchScanning(true);
+    setError('');
+    setSuccess('');
+    try {
+      const assetIds = assets.map(a => a._id);
+      const res = await fetch(`${config.API_BASE_URL}/api/scan/batch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ assetIds, scanType: 'quick' })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Batch scan failed');
+      setSuccess(`Batch scan completed. Successful: ${data.summary?.successfulScans ?? '-'} | Failed: ${data.summary?.failedScans ?? '-'}`);
+    } catch (err) {
+      console.error('Batch scan failed', err);
+      setError(err.message || 'Batch scan failed');
+    } finally {
+      setBatchScanning(false);
+    }
+  };
+
+  const testConnectivity = async (assetId) => {
+    setTestingAssetId(assetId);
+    setError('');
+    setSuccess('');
+    try {
+      const res = await fetch(`${config.API_BASE_URL}/api/scan/test/${assetId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Connectivity test failed');
+      setSuccess(`${data.asset?.name ?? 'Asset'} is ${data.reachable ? 'reachable' : 'not reachable'}.`);
+    } catch (err) {
+      console.error('Connectivity test failed', err);
+      setError(err.message || 'Connectivity test failed');
+    } finally {
+      setTestingAssetId(null);
     }
   };
 
@@ -312,24 +355,40 @@ const Assets = () => {
           >
             <FaPlus /> Add New
           </Button>
-          <Button
-            style={{ borderColor: 'green', color: 'green' }}
-            size="sm"
-            variant="outline-warning"
-            onClick={scanAllAssets}
-            disabled={scanningAll}
-            className="status-update rounded-pill d-flex align-items-center gap-2 mt-2 mt-md-0"
-          >
-            {scanningAll ? (
-              <>
-                <Spinner size="sm" animation="border" /> Updating {scanAllProgress}/{assets.length} assets...
-              </>
-            ) : (
-              <>
-                <FaNetworkWired /> Update Assets Statuses
-              </>
-            )}
-          </Button>
+                     <Button
+             style={{ borderColor: 'green', color: 'green' }}
+             size="sm"
+             variant="outline-warning"
+             onClick={scanAllAssets}
+             disabled={scanningAll}
+             className="status-update rounded-pill d-flex align-items-center gap-2 mt-2 mt-md-0"
+           >
+             {scanningAll ? (
+               <>
+                 <Spinner size="sm" animation="border" /> Updating {scanAllProgress}/{assets.length} assets...
+               </>
+             ) : (
+               <>
+                 <FaNetworkWired /> Update Assets Statuses
+               </>
+             )}
+           </Button>
+           <Button
+             style={{ borderColor: '#1594EA', color: '#1594EA' }}
+             size="sm"
+             variant="outline-primary"
+             onClick={runBatchScan}
+             disabled={batchScanning}
+             className="rounded-pill d-flex align-items-center gap-2 mt-2 mt-md-0"
+           >
+             {batchScanning ? (
+               <>
+                 <Spinner size="sm" animation="border" /> Batch Scanning...
+               </>
+             ) : (
+               <>Run Batch Scan</>
+             )}
+           </Button>
         </div>
       </div>
 
@@ -475,6 +534,21 @@ const Assets = () => {
                       <>
                         <FaBug /> Scan
                       </>
+                    )}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline-secondary"
+                    onClick={() => testConnectivity(asset._id)}
+                    disabled={testingAssetId === asset._id}
+                    className="d-flex align-items-center gap-1"
+                  >
+                    {testingAssetId === asset._id ? (
+                      <>
+                        <Spinner size="sm" animation="border" /> Testing...
+                      </>
+                    ) : (
+                      <>Ping</>
                     )}
                   </Button>
                 </div>
