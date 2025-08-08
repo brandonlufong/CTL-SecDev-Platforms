@@ -215,10 +215,11 @@ const Assets = () => {
       });
 
       const data = await res.json();
+      const scanResults = data.scanResults || data.logs || data.results || [];
 
-      if (res.ok && data.logs?.length > 0) {
+      if (res.ok && scanResults.length > 0) {
         setScannedAssetName(name);
-        setScanLogs(data.logs);
+        setScanLogs(scanResults);
         setSuccess('Scan completed successfully.');
         setShowScanModal(true);
       } else {

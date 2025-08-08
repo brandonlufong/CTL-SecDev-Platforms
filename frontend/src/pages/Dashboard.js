@@ -79,7 +79,8 @@ const Dashboard = () => {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await res.json();
-        setLatestScans(data);
+        const scans = Array.isArray(data) ? data : (data.scans || data.results || data.logs || []);
+        setLatestScans(scans);
       } catch (err) {
         console.error('Failed to load scan results');
       } finally {
@@ -132,7 +133,8 @@ const confirmed = window.confirm('Run a quick scan for all assets?');
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      setLatestScans(data.logs || []);
+      const logs = data.logs || data.results || data.scans || [];
+      setLatestScans(Array.isArray(logs) ? logs : []);
       alert('Scan completed!');
     } catch (err) {
       console.error(err);
