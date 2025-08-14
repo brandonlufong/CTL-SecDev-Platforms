@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { Modal, Button, Table, Form, Badge, Dropdown, Pagination } from 'react-bootstrap';
+import {
+  Table, Button, Modal, Form, Badge, Dropdown, Pagination, Card, ButtonGroup, Spinner,
+} from 'react-bootstrap';
 import { AuthContext } from '../context/AuthContext';
-import { FaPlus, FaEdit, FaTrash, FaSearch, FaSort } from 'react-icons/fa';
+import {
+  FaEdit, FaTrash, FaPlus, FaSyncAlt, FaDownload, FaSort, FaShieldAlt
+} from 'react-icons/fa';
+import Papa from 'papaparse'; // For CSV Export
 import config from '../config';
 import '../App.css'; // Import custom styles
 
@@ -13,6 +18,7 @@ const Vulnerabilities = () => {
 
   const [vulns, setVulns] = useState([]);
   const [assets, setAssets] = useState([]);
+  // const [filteredVulns, setFilteredVulns] = useState([]);
 
   const [form, setForm] = useState({
     title: '',
@@ -28,42 +34,117 @@ const Vulnerabilities = () => {
   });
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterSeverity, setFilterSeverity] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
-  const [sortKey, setSortKey] = useState('');
+  const [severityFilter, setSeverityFilter] = useState('');
+  // const [filteredAssets, setFilteredAssets] = useState([]);
+  const [filteredVulns, setFilteredVulns] = useState([]);
+  // const [sortKey, setSortKey] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [sortField, setSortField] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const itemsPerPage = 5;
+
+
+  const [sortBy, setSortBy] = useState('name');
+  const [sortOrder, setSortOrder] = useState('asc');
 
   // Fetch all vulnerabilities
   const fetchVulnerabilities = async () => {
+    setLoading(true)
     try {
       const res = await fetch(`${config.API_BASE_URL}/api/vulnerabilities`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       setVulns(data);
+      setFilteredVulns(data);
     } catch (err) {
-      console.error('Failed to fetch vulnerabilities', err);
+      console.error('Failed to fetch vulnerabilities', err); 
+      setError('Failed to load vulnerabilities');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Fetch all assets
+  const applyFilters = () => {
+    let filtered = [...vulns];
+
+    if (searchTerm) {
+      filtered = filtered.filter(vuln =>
+        Object.values(vuln).some(field =>
+          String(field).toLowerCase().includes(searchTerm.toLowerCase())
+        )
+      );
+    }
+
+    if (statusFilter) {
+      filtered = filtered.filter(vuln => vuln.status === statusFilter);
+    }
+
+    if (severityFilter) {
+      filtered = filtered.filter(vuln => vuln.severity === severityFilter);
+    }
+
+    if (sortField) {
+      filtered.sort((a, b) =>
+        a[sortField]?.toLowerCase().localeCompare(b[sortField]?.toLowerCase())
+      );
+    }
+
+    setFilteredVulns(filtered);
+  };
+
+  useEffect(() => {
+    applyFilters();
+    setCurrentPage(1); // Reset to first page on filters change
+  }, [searchTerm, statusFilter, severityFilter, sortField, vulns]);
+
+  // Filter and sort vulns
+  useEffect(() => {
+    let filtered = vulns.filter(vuln =>
+      Object.values(vuln).some(value =>
+        String(value).toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    );
+
+    // Sort vulns
+    filtered.sort((a, b) => {
+      const aVal = a[sortBy] || '';
+      const bVal = b[sortBy] || '';
+      if (sortOrder === 'asc') {
+        return aVal.toString().localeCompare(bVal.toString());
+      } else {
+        return bVal.toString().localeCompare(aVal.toString());
+      }
+    });
+
+    setFilteredVulns(filtered);
+    setCurrentPage(1);
+  }, [vulns, searchTerm, sortBy, sortOrder]);
+
+  // Fetch assets with enhanced data
   const fetchAssets = async () => {
+    setLoading(true);
     try {
       const res = await fetch(`${config.API_BASE_URL}/api/assets`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       setAssets(data);
+      // setFilteredAssets(data);
     } catch (err) {
       console.error('Failed to fetch assets', err);
+      setError('Failed to load assets');
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchAssets();
     fetchVulnerabilities();
-  }, []);
+  }, [token]);
 
   // const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value });
   const handleChange = e => {
@@ -138,6 +219,17 @@ const Vulnerabilities = () => {
     }
   };
 
+  const exportToCSV = () => {
+    const csv = Papa.unparse(filteredVulns);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', 'vulnerabilities_export.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleDelete = async id => {
     const confirmed = window.confirm('Are you sure you want to delete this vulnerability?');
     if (!confirmed) return;
@@ -184,29 +276,46 @@ const Vulnerabilities = () => {
   };
 
   // Filter, Search, and Sort logic
-  const filteredVulns = vulns
-    .filter(v =>
-      v.title.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-    .filter(v => (filterSeverity ? v.severity === filterSeverity : true))
-    .filter(v => (filterStatus ? v.status === filterStatus : true))
-    .sort((a, b) =>
-      sortKey
-        ? a[sortKey].localeCompare(b[sortKey])
-        : 0
-    );
+  // const filteredVulns = vulns
+  //   .filter(v =>
+  //     v.title.toLowerCase().includes(searchTerm.toLowerCase())
+  //   )
+  //   .filter(v => (filterSeverity ? v.severity === filterSeverity : true))
+  //   .filter(v => (filterStatus ? v.status === filterStatus : true))
+  //   .sort((a, b) =>
+  //     sortKey
+  //       ? a[sortKey].localeCompare(b[sortKey])
+  //       : 0
+  //   );
 
-  const paginatedVulns = filteredVulns.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  // const paginatedVulns = filteredVulns.slice(
+  //   (currentPage - 1) * itemsPerPage,
+  //   currentPage * itemsPerPage
+  // );
 
+  // Pagination
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const paginatedVulns = filteredVulns.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(filteredVulns.length / itemsPerPage);
+
+  
+  if (loading) {
+    return (
+      <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '50vh' }}>
+        <Spinner animation="border" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </Spinner>
+      </div>
+    );
+  }
 
   return (
     <div className="container py-4" style={{ backgroundColor: '#F1F8FD' }}>
       <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap">
-        <h3 style={{ color: '#1594EA' }}>Vulnerability List</h3>
+        <h3 style={{ color: '#1594EA' }}>
+          <FaShieldAlt className="me-2" /> Vulnerability List
+        </h3>
         <Button
           style={{
             backgroundColor: '#1594EA',
@@ -214,7 +323,7 @@ const Vulnerabilities = () => {
             color: '#fff',
           }}
           onClick={openCreateModal}
-          className="d-flex align-items-center gap-2 px-3 rounded-pill shadow-sm"
+          className="d-flex align-items-center gap-2 px-3 shadow-sm"
         >
           <FaPlus /> Add New
         </Button>
@@ -230,8 +339,8 @@ const Vulnerabilities = () => {
           style={{ maxWidth: '250px' }}
         />
         <Form.Select
-          value={filterSeverity}
-          onChange={e => setFilterSeverity(e.target.value)}
+          value={severityFilter}
+          onChange={e => setSeverityFilter(e.target.value)}
           style={{ maxWidth: '150px' }}
         >
           <option value="">All Severities</option>
@@ -241,8 +350,8 @@ const Vulnerabilities = () => {
           <option value="Low">Low</option>
         </Form.Select>
         <Form.Select
-          value={filterStatus}
-          onChange={e => setFilterStatus(e.target.value)}
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value)}
           style={{ maxWidth: '150px' }}
         >
           <option value="">All Statuses</option>
@@ -255,112 +364,196 @@ const Vulnerabilities = () => {
             <FaSort /> Sort
           </Dropdown.Toggle>
           <Dropdown.Menu>
-            <Dropdown.Item onClick={() => setSortKey('severity')}>
+            <Dropdown.Item onClick={() => setSortField('severity')}>
               By Severity
             </Dropdown.Item>
-            <Dropdown.Item onClick={() => setSortKey('status')}>
+            <Dropdown.Item onClick={() => setSortField('status')}>
               By Status
             </Dropdown.Item>
-            <Dropdown.Item onClick={() => setSortKey('title')}>
+            <Dropdown.Item onClick={() => setSortField('title')}>
               By Title
             </Dropdown.Item>
           </Dropdown.Menu>
         </Dropdown>
+        <Button
+          size="sm"
+          variant="outline-success"
+          onClick={exportToCSV}
+          className="d-flex align-items-center gap-1"
+        >
+          <FaDownload /> Export CSV
+        </Button>
+        <Button
+          size="sm"
+          variant="outline-info"
+          onClick={fetchVulnerabilities}
+          className="d-flex align-items-center gap-1"
+        >
+          <FaSyncAlt /> Refresh
+        </Button>
       </div>
 
-      <Table bordered hover responsive className="align-middle rounded shadow-sm">
-        <thead style={{ backgroundColor: '#1594EA', color: '#fff' }}>
-          <tr>
-            <th>Title</th>
-            <th>Severity</th>
-            <th>Status</th>
-            <th>Asset</th>
-            <th>CVE</th>
-            <th>Discovery Date</th>
-            <th>Exploit</th>
-            <th>Description</th>
-            <th className="text-center">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {paginatedVulns.map(v => (
-            <tr key={v._id}>
-              <td>{v.title}</td>
-              <td>{renderSeverityBadge(v.severity)}</td>
-              <td>
-                <Dropdown>
-                  <Dropdown.Toggle
-                    variant={
-                      v.status === 'Resolved'
-                        ? 'success'
-                        : v.status === 'In Progress'
-                        ? 'warning'
-                        : 'danger'
-                    }
-                    size="sm"
-                  >
-                    {v.status}
-                  </Dropdown.Toggle>
-                  <Dropdown.Menu>
-                    {['Open', 'In Progress', 'Resolved'].map(status => (
-                      <Dropdown.Item
-                        key={status}
-                        onClick={() => handleStatusToggle(v._id, status)}
+      <Card>
+        <Card.Body>
+          {/* <Table bordered hover responsive className="align-middle rounded shadow-sm"> */}
+          <Table responsive hover>
+            <thead style={{ backgroundColor: '#1594EA', color: '#fff' }}>
+              <tr>
+                <th>Name</th>
+                <th>Severity</th>
+                <th>CVSS Score</th>
+                <th>Status</th>
+                <th>Asset</th>
+                <th>CVE</th>
+                <th>Discovery Date</th>
+                {/* <th>Exploit</th> */}
+                <th>Remediation</th>
+                <th className="text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedVulns.map(v => (
+                <tr key={v._id}>
+                  <td>
+                    <strong>{v.title}</strong>
+                    {v.description && (
+                      <div className="text-muted small">{v.description}</div>
+                    )}
+                  </td>
+                  <td>{renderSeverityBadge(v.severity)}</td>
+                  <td>
+                    <Badge
+                      bg={
+                        v.cvssScore >= 9
+                          ? 'danger'
+                          : v.cvssScore >= 7
+                          ? 'warning'
+                          : v.cvssScore >= 4
+                          ? 'info'
+                          : v.cvssScore > 0
+                          ? 'secondary'
+                          : 'light'
+                      }
+                      className="rounded-pill px-3"
+                    >
+                      {v.cvssScore ? v.cvssScore.toFixed(1) : 'N/A'}
+                    </Badge>
+                  </td>
+                  <td>
+                    <Dropdown>
+                      <Dropdown.Toggle
+                        variant={
+                          v.status === 'Resolved'
+                            ? 'success'
+                            : v.status === 'In Progress'
+                            ? 'warning'
+                            : 'danger'
+                        }
+                        size="sm"
                       >
-                        {status}
-                      </Dropdown.Item>
-                    ))}
-                  </Dropdown.Menu>
-                </Dropdown>
-              </td>
-              <td>{v.asset ? `${v.asset.name} (${v.asset.ip})` : 'N/A'}</td>
-              <td>{v.cve}</td>
-              <td>{v.discoveredDate?.slice(0, 10)}</td>
-              <td>{v.exploitAvailable ? 'Yes' : 'No'}</td>
-              <td>{v.description}</td>
-              <td className="text-center">
-                <div className="d-flex justify-content-center gap-2">
-                  <Button
-                    style={{
-                      borderColor: '#1594EA',
-                      color: '#1594EA',
-                    }}
-                    variant="outline-primary"
-                    size="sm"
-                    onClick={() => openEditModal(v)}
-                    className="d-flex align-items-center gap-1 edit-btn"
-                  >
-                    <FaEdit /> Edit
-                  </Button>
-                  <Button
-                    variant="outline-danger"
-                    size="sm"
-                    onClick={() => handleDelete(v._id)}
-                    className="d-flex align-items-center gap-1"
-                  >
-                    <FaTrash /> Delete
-                  </Button>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </Table>
+                        {v.status}
+                      </Dropdown.Toggle>
+                      <Dropdown.Menu>
+                        {['Open', 'In Progress', 'Resolved'].map(status => (
+                          <Dropdown.Item
+                            key={status}
+                            onClick={() => handleStatusToggle(v._id, status)}
+                          >
+                            {status}
+                          </Dropdown.Item>
+                        ))}
+                      </Dropdown.Menu>
+                    </Dropdown>
+                  </td>
+                  <td>
+                    {/* {v.asset ? `${v.asset.name} (${v.asset.ip})` : 'N/A'} */}
+                    <strong>{v.asset.name}</strong>
+                    <br/>
+                    {v.asset.ip && (
+                      <code>{v.asset.ip}</code>
+                    )}
+                  </td>
+                  <td>
+                    <small>{v.cve}</small>
+                  </td>
+                  <td>
+                    <small>{v.discoveredDate?.slice(0, 10)}</small>
+                  </td>
+                  <td>
+                    <small>{v.remediation || 'N/A'}</small>
+                  </td>
+                  {/* <td>{v.exploitAvailable ? 'Yes' : 'No'}</td> */}
+                  {/* <td>{v.description}</td> */}
+                  <td className="text-center">
+                    <div className="d-flex justify-content-center gap-2">
+                      {/* <Button
+                        style={{
+                          borderColor: '#1594EA',
+                          color: '#1594EA',
+                        }}
+                        variant="outline-primary"
+                        size="sm"
+                        onClick={() => openEditModal(v)}
+                        className="d-flex align-items-center gap-1 edit-btn"
+                      >
+                        <FaEdit /> Edit
+                      </Button>
+                      <Button
+                        variant="outline-danger"
+                        size="sm"
+                        onClick={() => handleDelete(v._id)}
+                        className="d-flex align-items-center gap-1"
+                      >
+                        <FaTrash /> Delete
+                      </Button> */}
+                    <ButtonGroup size="sm">
+                      <Button 
+                        // style={{ borderColor: 'grey', color: 'grey' }} 
+                        variant="outline-primary" 
+                        onClick={() => openEditModal(v)}>
+                        <FaEdit />
+                      </Button>
+                      <Button 
+                        // style={{ borderColor: 'red', borderLeft: 'none', color: 'red' }}
+                        variant="outline-danger" 
+                        onClick={() => handleDelete(v._id)}>
+                        <FaTrash />
+                      </Button>
+                    </ButtonGroup>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
 
-      {/* Pagination */}
-      <div className="d-flex justify-content-center mt-3">
-        <Pagination>
-          {[...Array(totalPages).keys()].map(page => (
-            <Pagination.Item
-              key={page + 1}
-              active={page + 1 === currentPage}
-              onClick={() => setCurrentPage(page + 1)}
-            >
-              {page + 1}
-            </Pagination.Item>
-          ))}
-        </Pagination>
-      </div>
+          {/* Pagination */}
+          <div className="d-flex justify-content-between align-items-center mt-3">
+            <div>
+              Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, vulns.length)} of {vulns.length} vulnerabilities
+            </div>
+            <Pagination>
+              <Pagination.Prev 
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(currentPage - 1)}
+              />
+              {[...Array(totalPages).keys()].map(page => (
+                <Pagination.Item
+                  key={page + 1}
+                  active={page + 1 === currentPage}
+                  onClick={() => setCurrentPage(page + 1)}
+                >
+                  {page + 1}
+                </Pagination.Item>
+              ))}
+              <Pagination.Next
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(currentPage + 1)}
+              />
+            </Pagination>
+          </div>
+        </Card.Body>
+      </Card>
 
       {/* Create/Edit Modal */}
       <Modal show={showModal} onHide={() => setShowModal(false)}>

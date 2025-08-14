@@ -87,6 +87,11 @@ class ScannerService {
 
     try {
       if (onProgress) onProgress(0, `Initializing scan for ${ip}`);
+      // if (typeof onProgress !== 'function') {
+      //   onProgress = () => {}; // no-op fallback
+      // }
+
+      onProgress(0, `Initializing scan for ${ip}`);
 
       // Build Nmap command based on scan type
       const nmapCommand = this.buildNmapCommand(ip, scanType, includeVulnScripts);
@@ -173,7 +178,8 @@ class ScannerService {
 
     // Add vulnerability detection scripts if requested
     if (includeVulnScripts && scanType !== 'vulnerability') {
-      options.push('--script', 'vulners,vulscan');
+      // options.push('--script', 'vulners,vulscan');
+      options.push('--script', 'vulners');
     }
 
     // Add the target IP
@@ -413,7 +419,7 @@ const scannerService = new ScannerService();
 
 // Legacy export for backward compatibility
 module.exports = {
-  runNmapScan: (ip, onProgress) => scannerService.runNmapScan(ip, { onProgress }),
+  runNmapScan: (ip, options) => scannerService.runNmapScan(ip, options),
   runBatchScan: (ipList, options) => scannerService.runBatchScan(ipList, options),
   getScanStats: () => scannerService.getScanStats(),
   validateIP: (ip) => scannerService.validateIP(ip),
