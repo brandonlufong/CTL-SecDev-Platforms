@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useContext } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
 import {
   Card,
   Container,
@@ -12,6 +13,8 @@ import {
   Badge,
   Form,
   InputGroup,
+  CardBody,
+  Alert
 } from 'react-bootstrap';
 import { Pie, Bar } from 'react-chartjs-2';
 import {
@@ -31,18 +34,39 @@ import {
   FaChevronDown,
   FaChevronUp,
   FaSearch,
+  FaShieldAlt,
+  FaServer,
+  FaNetworkWired,
+  FaExclamationTriangle,
+  FaCheckCircle,
+  FaTachometerAlt
 } from 'react-icons/fa';
 import config from '../config';
+import { io } from 'socket.io-client';
 
 ChartJS.register(ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const { token } = useContext(AuthContext);
+
+  const toVulnerabilities= ({severity, status}) => {
+    let query = '';
+    if (severity) query += `severity=${severity}`;
+    if (status) query += (query ? '&' : '') + `status=${status}`;
+
+    navigate(`/vulnerabilities${query ? `?${query}` : ''}`);
+  };
+
+  const toAssets= () => {
+    navigate('/servers');
+  };
 
   const [summary, setSummary] = useState({
     totalVulnerabilities: 0,
     openVulnerabilities: 0,
     resolvedVulnerabilities: 0,
+    criticalOpenCount: 0,
     totalAssets: 0,
     severityCount: {},
     statusCount: {},
@@ -78,7 +102,8 @@ const Dashboard = () => {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await res.json();
-        setLatestScans(data);
+        const scans = data.scans || data.logs || data || [];
+        setLatestScans(scans);
       } catch (err) {
         console.error('Failed to load scan results');
       } finally {
@@ -90,21 +115,37 @@ const Dashboard = () => {
   }, [token]);
 
   useEffect(() => {
-    if (!loadingScans) return;
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`${config.API_BASE_URL}/api/scan/progress`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        setProgress(data);
-        if (!data.active) clearInterval(interval);
-      } catch (err) {
-        console.error('Error fetching progress');
-        clearInterval(interval);
-      }
-    }, 2000);
-    return () => clearInterval(interval);
+    // Socket.IO real-time progress (non-intrusive, preserves UI)
+    const socket = io(config.API_BASE_URL, { transports: ['websocket', 'polling'] });
+    socket.on('scanProgress', (p) => {
+      if (p && typeof p === 'object') setProgress(p);
+    });
+
+    // Fallback polling when loading scans
+    let interval;
+    if (loadingScans) {
+      interval = setInterval(async () => {
+        try {
+          const res = await fetch(`${config.API_BASE_URL}/api/scan/progress`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const data = await res.json();
+          const p = data.progress || data;
+          setProgress(p);
+          if (p && p.active === false) {
+            clearInterval(interval);
+          }
+        } catch (err) {
+          console.error('Error fetching progress');
+          if (interval) clearInterval(interval);
+        }
+      }, 2000);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+      socket.close();
+    };
   }, [loadingScans, token]);
 
   const handleQuickScan = async () => {
@@ -118,7 +159,8 @@ const Dashboard = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      setLatestScans(data.logs || []);
+      const scans = data.scans || data.results || data.logs || [];
+      setLatestScans(scans);
       alert('Scan completed!');
     } catch (err) {
       console.error(err);
@@ -144,153 +186,313 @@ const Dashboard = () => {
       .includes(searchTerm.toLowerCase())
   );
 
+  // Risk level colors
+  const riskColors = {
+    Critical: '#dc3545',
+    High: '#fd7e14',
+    Medium: '#ffc107',
+    Low: '#28a745',
+  };
+
+  // Enhanced chart data for vulnerabilities by severity
+  const severityChartData = {
+    labels: Object.keys(summary.severityCount || {}),
+    datasets: [
+      {
+        data: Object.values(summary.severityCount || {}),
+        backgroundColor: Object.keys(summary.severityCount || {}).map(
+          severity => severityColors[severity]
+        ),
+        borderWidth: 2,
+        borderColor: '#fff',
+      },
+    ],
+  };
+
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'bottom',
+        labels: {
+          padding: 15,
+          usePointStyle: true,
+        },
+      },
+    },
+  };
+
+  // Chart data for vulnerability status
+  const statusChartData = {
+    labels: Object.keys(summary.statusCount || {}),
+    datasets: [
+      {
+        data: Object.values(summary.statusCount || {}),
+        backgroundColor: ['#28a745', '#ffc107', '#dc3545', '#6c757d'],
+        borderWidth: 2,
+        borderColor: '#fff',
+      },
+    ],
+  };
+
+  // Risk level chart data
+  const riskChartData = {
+    labels: Object.keys(summary.riskLevels || {}),
+    datasets: [
+      {
+        label: 'Assets by Risk Level',
+        data: Object.values(summary.riskLevels || {}),
+        backgroundColor: Object.keys(summary.riskLevels || {}).map(
+          risk => riskColors[risk] || '#6c757d'
+        ),
+        borderWidth: 1,
+        borderColor: '#fff',
+      },
+    ],
+  };
+
   return (
     <Container fluid className="container mt-4" style={{ backgroundColor: '#F1F8FD', minHeight: '100vh' }}>
       <h3 style={{ color: '#1594EA' }} className="mb-4 d-flex align-items-center">
-        <FaBug className="me-2"/> Dashboard Overview
+        <FaTachometerAlt className="me-2"/> Dashboard Overview
       </h3>
 
-      <div className="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
-        <Button
-          variant="primary"
-          onClick={handleQuickScan}
-          disabled={loadingScans}
-          className="d-flex align-items-center gap-2 rounded-pill shadow-sm"
-          style={{ backgroundColor: '#1594EA', border: 'none' }}
-        >
-          {loadingScans ? (
-            <>
-              <Spinner size="sm" animation="border" />
-              Scanning...
-            </>
-          ) : (
-            <>
-              <FaSyncAlt /> Run Quick Scan
-            </>
-          )}
-        </Button>
-
-        <Button
-          variant="light"
-          onClick={() => setShowScans(!showScans)}
-          className="d-flex align-items-center gap-2 border rounded-pill shadow-sm"
-          style={{ color: '#1594EA' }}
-        >
-          <FaListUl />
-          {showScans ? (
-            <>
-              Hide Recent Scan Logs <FaChevronUp />
-            </>
-          ) : (
-            <>
-              Show Recent Scan Logs <FaChevronDown />
-            </>
-          )}
-        </Button>
-      </div>
-
-      {loadingScans && progress.active && (
-        <div className="mb-4">
-          <strong className="text-muted">{progress.message}</strong>
-          <ProgressBar
-            now={progress.percent}
-            label={`${progress.percent}%`}
-            animated
-            striped
-            variant="primary"
-            className="rounded-pill"
-          />
-        </div>
+    {loadingScans && progress.active && (
+        <Card className="mb-4">
+          <Card.Body>
+            <div className="mb-4">
+              <strong className="text-muted">{progress.message}</strong>
+              <ProgressBar
+                now={progress.percent}
+                label={`${progress.percent}%`}
+                animated
+                striped
+                variant="primary"
+                className="rounded-pill"
+              />
+            </div>
+          </Card.Body>
+        </Card>
       )}
 
-      <Collapse in={showScans}>
-        <div className="mb-5">
-          <h5 className="mb-3 text-secondary fw-semibold d-flex align-items-center">
-            <FaListUl className="me-2" />
-            Latest Scan Results
-          </h5>
+      {/* Summary Cards */}
+      <Row className="mb-4">
+        <Col md={3} className="mb-3">
+          <Card className="h-100 shadow-sm" onClick={() => toVulnerabilities({status: 'Open'})} style={{cursor:'pointer',}}>
+            <Card.Body className="text-center">
+              <FaShieldAlt size={30} className="text-warning mb-2" />
+              <h4 className="text-warning">{summary.totalVulnerabilities}</h4>
+              <p className="mb-0">Total Vulnerabilities</p>
+              <small className="text-muted">
+                {summary.openVulnerabilities} open, {summary.resolvedVulnerabilities} resolved
+              </small>
+            </Card.Body>
+          </Card>
+        </Col>
 
-          {/* ✅ Search Bar */}
-          <InputGroup className="mb-3">
-            <InputGroup.Text>
-              <FaSearch />
-            </InputGroup.Text>
-            <Form.Control
-              placeholder="Search scans..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </InputGroup>
+        <Col md={3} className="mb-3">
+          <Card className="h-100 shadow-sm" style={{cursor:'pointer',}}>
+            <Card.Body className="text-center">
+              <FaServer size={30} className="text-primary mb-2" />
+              <h4 className="text-primary">{summary.totalAssets}</h4>
+              <p className="mb-0">Total Server Assets</p>
+              <small className="text-muted">
+                {summary.onlineAssets} online, {summary.offlineAssets} offline
+              </small>
+            </Card.Body>
+          </Card>
+        </Col>
 
-          {loadingScans ? (
-            <Spinner animation="border" />
-          ) : (
-            <Table striped bordered hover responsive className="align-middle shadow-sm rounded">
-              <thead style={{ backgroundColor: '#1594EA', color: '#fff' }}>
-                <tr>
-                  <th>Asset</th>
-                  <th>Port</th>
-                  <th>Protocol</th>
-                  <th>Status</th>
-                  <th>Service</th>
-                  <th>Product</th>
-                  <th>Version</th>
-                  <th>CPE</th>
-                  <th>Score</th>
-                  <th>#Vulns</th>
-                  <th>Notes</th>
-                  <th>Scanned At</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredScans.length === 0 ? (
-                  <tr>
-                    <td colSpan="12" className="text-center text-muted">
-                      No scans found.
-                    </td>
-                  </tr>
+        <Col md={3} className="mb-3">
+          <Card className="h-100 shadow-sm" onClick={() => toVulnerabilities({severity: 'Critical', status: 'Open'})} style={{cursor:'pointer',}}>
+            <Card.Body className="text-center">
+              <FaExclamationTriangle size={30} className="text-danger mb-2" />
+              <h4 className="text-danger">{(summary.criticalOpenCount || 0)}</h4>
+              <p className="mb-0">Critical Vulnerabilities</p>
+              <small className="text-muted">Require immediate attention</small>
+            </Card.Body>
+          </Card>
+        </Col>
+
+        <Col md={3} className="mb-3">
+          <Card className="h-100 shadow-sm" onClick={() => toVulnerabilities({status: 'Resolved'})} style={{cursor:'pointer',}}>
+            <Card.Body className="text-center">
+              <FaCheckCircle size={30} className="text-secondary mb-2" />
+              <h4 className="text-secondary">{summary.resolvedVulnerabilities || 0}</h4>
+              <p className="mb-0">Resolved Vulnerabilities</p>
+              <small className="text-muted">Review</small>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Quick Actions */}
+      <Row className="mb-4">
+        <Col>
+          <Card className="shadow-sm">
+              <Card.Body>
+                <div className="d-flex justify-content-between align-items-center flex-wrap">
+                  <div>
+                    <h5 className="mb-1">Quick Actions</h5>
+                    <p className="text-muted mb-0">Manage your security scanning operations</p>
+                  </div>
+                  <div className="d-flex gap-2">
+                <Button
+                  style={{
+                    borderColor: '#1594EA',
+                    color: '#ffffff',
+                    backgroundColor: '#1594EA',
+                  }}
+                  // variant="success"
+                  onClick={handleQuickScan}
+                  disabled={loadingScans || progress.active}
+                  className="d-flex align-items-center edit-btn"
+                >
+                  {loadingScans || progress.active ? (
+                    <>
+                      <Spinner size="sm" animation="border" className="me-2" />
+                      Scanning...
+                    </>
+                  ) : (
+                    <>
+                      <FaSyncAlt className="me-2" /> Run Quick Scan
+                    </>
+                  )}
+                </Button>
+                
+                <Button
+                  style={{
+                    borderColor: '#1594EA',
+                    color: '#1594EA',
+                  }}
+                  variant="outline-primary"
+                  onClick={() => setShowScans(!showScans)}
+                  className="d-flex align-items-center edit-btn"
+                >
+                  <FaListUl className="me-2" />
+                  {showScans ? (
+                    <>
+                      Hide Recent Scans <FaChevronUp className="ms-1" />
+                    </>
+                  ) : (
+                    <>
+                      Show Recent Scans <FaChevronDown className="ms-1" />
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            <Collapse in={showScans}>
+              <div className="mb-5">
+                <h5 className="mb-3 text-secondary fw-semibold d-flex align-items-center">
+                  <br/><br/><br/><FaListUl className="me-2" />
+                  Latest Scan Results
+                </h5>
+
+                {/* ✅ Search Bar */}
+                <InputGroup className="mb-3">
+                  <InputGroup.Text>
+                    <FaSearch />
+                  </InputGroup.Text>
+                  <Form.Control
+                    placeholder="Search scans..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </InputGroup>
+
+                {loadingScans ? (
+                  <Spinner animation="border" />
                 ) : (
-                  filteredScans.map((scan, i) => (
-                    <tr key={i}>
-                      <td>{scan.asset?.name || scan.assetName || scan.host || 'Unknown'}</td>
-                      <td>{scan.port ?? '-'}</td>
-                      <td>{scan.protocol ?? '-'}</td>
-                      <td>{scan.state ?? '-'}</td>
-                      <td>{scan.service ?? '-'}</td>
-                      <td>{scan.product ?? '-'}</td>
-                      <td>{scan.version ?? '-'}</td>
-                      <td>{scan.cpe ?? '-'}</td>
-                      <td>
-                        <Badge
-                          bg={
-                            scan.vulnerabilityScore >= 8
-                              ? 'danger'
-                              : scan.vulnerabilityScore >= 5
-                              ? 'warning'
-                              : scan.vulnerabilityScore > 0
-                              ? 'info'
-                              : 'secondary'
-                          }
-                          className="rounded-pill px-3"
-                        >
-                          {scan.vulnerabilityScore ?? 0}
-                        </Badge>
-                      </td>
-                      <td>{scan.vulnerabilities?.length || 0}</td>
-                      <td style={{ whiteSpace: 'pre-line', maxWidth: 200 }}>
-                        {scan.notes || '-'}
-                      </td>
-                      <td>{new Date(scan.scannedAt || scan.createdAt).toLocaleString()}</td>
-                    </tr>
-                  ))
+                  <Card>
+                    <Card.Body>
+                        <Table responsive striped hover>
+                          <thead style={{ position: 'sticky', top: 0, backgroundColor: '#fff', zIndex: 1 }}>
+                            <tr>
+                              <th>Asset</th>
+                              <th>Port</th>
+                              <th>Protocol</th>
+                              <th>Service</th>                   
+                              <th>Status</th>
+                              <th>Product</th>
+                              <th>Version</th>
+                              <th>Vulnerabilities</th>
+                              <th>Risk Score</th>
+                              <th>Confidence</th>
+                              <th>Scanned At</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredScans.length === 0 ? (
+                              <tr>
+                                <td colSpan="9" className="text-center text-muted py-4">
+                                  {searchTerm ? 'No scans match your search.' : 'No scans found.'}
+                                </td>
+                              </tr>
+                            ) : (
+                              filteredScans.map((scan, i) => (
+                                <tr key={i}>
+                                  <td>
+                                    <strong>{scan.asset?.name || 'Unknown'}</strong>
+                                    <br />
+                                    <small className="text-muted">{scan.asset?.ip || '-'}</small>
+                                  </td>
+                                  <td><code>{scan.port ?? '-'}</code></td>
+                                  <td>{scan.protocol ?? '-'}</td>
+                                  <td>{scan.state ?? '-'}</td>
+                                  <td>{scan.service ?? '-'}</td>
+                                  <td>{scan.product ?? '-'}</td>
+                                  <td>{scan.version ?? '-'}</td>
+                                  <td>
+                                    {scan.vulnerabilities?.length > 0 ? (
+                                      <Badge bg="warning">
+                                        {scan.vulnerabilities.length} found
+                                      </Badge>
+                                    ) : (
+                                      <Badge bg="success">None</Badge>
+                                    )}
+                                  </td>
+                                  <td>
+                                    <Badge
+                                      bg={
+                                        scan.vulnerabilityScore >= 8
+                                          ? 'danger'
+                                          : scan.vulnerabilityScore >= 5
+                                          ? 'warning'
+                                          : scan.vulnerabilityScore > 0
+                                          ? 'info'
+                                          : 'success'
+                                      }
+                                    >
+                                      {scan.vulnerabilityScore?.toFixed(1) ?? '0.0'}
+                                    </Badge>
+                                  </td>
+                                  <td>
+                                    <Badge bg="info">{scan.confidence ?? 0}%</Badge>
+                                  </td>
+                                  <td>
+                                    <small>
+                                      {new Date(scan.scannedAt || scan.createdAt).toLocaleString()}
+                                    </small>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </Table>
+                    </Card.Body>
+                  </Card>
                 )}
-              </tbody>
-            </Table>
-          )}
-        </div>
-      </Collapse>
+              </div>
+            </Collapse>
+          </Card.Body>
+        </Card>
+        </Col>
+      </Row>
 
-      <Row className="mb-4 g-4">
+      {/* <Row className="mb-4 g-4">
         <Col md={3}>
           <Card className="shadow-sm border-0 rounded-4" style={{ backgroundColor: '#1594EA', color: '#fff' }}>
             <Card.Body>
@@ -323,17 +525,25 @@ const Dashboard = () => {
             </Card.Body>
           </Card>
         </Col>
-      </Row>
+      </Row> */}
 
       <h4 style={{ color: '#1594EA' }} className="mt-5">Vulnerabilities by Severity</h4>
       <Row className="g-4 mt-2">
         {Object.entries(summary.severityCount).map(([level, count]) => (
           <Col md={3} key={level}>
             <Card
-              className={`shadow-sm border-0 rounded-4 text-white`}
-              style={{ backgroundColor: severityColors[level] === 'danger' ? '#dc3545' : severityColors[level] === 'warning' ? '#fd7e14' : severityColors[level] === 'info' ? '#0dcaf0' : '#6c757d' }}
+              onClick={() => toVulnerabilities({ severity: level })} // pass as object
+              className="shadow-sm border-0 text-white"
+              style={{
+                cursor: 'pointer',
+                backgroundColor:
+                  severityColors[level] === 'danger' ? '#dc3545' :
+                  severityColors[level] === 'warning' ? '#fd7e14' :
+                  severityColors[level] === 'info' ? '#0dcaf0' :
+                  '#6c757d'
+              }}
             >
-              <Card.Body>
+              <Card.Body className="text-center">
                 <Card.Title className="fw-bold">{level}</Card.Title>
                 <h4>{count}</h4>
               </Card.Body>
@@ -342,30 +552,49 @@ const Dashboard = () => {
         ))}
       </Row>
 
+      {/* Charts Row */}
       <h4 style={{ color: '#1594EA' }} className="mt-5">Vulnerability Overview</h4>
       <Row>
         <Col md={6}>
-        <Card className="shadow-sm border-0 rounded-4 p-3">
-          <h6 className="text-center text-muted">By Severity</h6>
-          <Pie
-            data={{
-              labels: Object.keys(summary.severityCount),
-              datasets: [
-                {
-                  data: Object.values(summary.severityCount),
-                  backgroundColor: ['#dc3545', '#fd7e14', '#0dcaf0', '#6c757d'],
-                  borderWidth: 1,
-                },
-              ],
-            }}
-            options={{ responsive: true }}
-          />
-        </Card>
+        <Card className="h-100 shadow-sm border-0 p-3">
+          <Card.Header>
+            <h6 className="text-center text-muted">By Severity</h6>
+          </Card.Header>
+          <Card.Body>
+            <div>
+                {Object.keys(summary.severityCount || {}).length > 0 ?(          
+                  <Pie
+                    data={{
+                      labels: Object.keys(summary.severityCount),
+                      datasets: [
+                        {
+                          data: Object.values(summary.severityCount),
+                          backgroundColor: ['#dc3545', '#fd7e14', '#0dcaf0', '#6c757d'],
+                          borderWidth: 1,
+                        },
+                      ],
+                    }}
+                    options={{ responsive: true }}
+                  />) : 
+                  (
+                      <div className="d-flex align-items-center justify-content-center h-100">
+                        <div className="text-center text-muted">
+                          <FaCheckCircle size={40} className="mb-2" />
+                          <p>No vulnerabilities found</p>
+                        </div>
+                      </div>
+                    )
+                  }
+              </div>
+            </Card.Body> 
+          </Card>
         </Col>
 
         <Col md={6}>
-        <Card className="shadow-sm border-0 rounded-4 p-3">
-          <h6 className="text-center text-muted">By Status</h6>
+        <Card className="shadow-sm border-0 p-3">
+          <Card.Header>
+            <h6 className="text-center text-muted">By Status</h6>
+          </Card.Header>
           <Bar
             data={{
               labels: Object.keys(summary.statusCount),
@@ -399,3 +628,548 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+
+// import React, { useEffect, useState, useContext } from 'react';
+// import {
+//   Card,
+//   Container,
+//   Row,
+//   Col,
+//   Spinner,
+//   Button,
+//   Table,
+//   Collapse,
+//   ProgressBar,
+//   Badge,
+//   Form,
+//   InputGroup,
+// } from 'react-bootstrap';
+// import { Pie, Bar } from 'react-chartjs-2';
+// import {
+//   Chart as ChartJS,
+//   ArcElement,
+//   Tooltip,
+//   Legend,
+//   BarElement,
+//   CategoryScale,
+//   LinearScale,
+// } from 'chart.js';
+// import { AuthContext } from '../context/AuthContext';
+// import {
+//   FaSyncAlt,
+//   FaBug,
+//   FaListUl,
+//   FaChevronDown,
+//   FaChevronUp,
+//   FaSearch,
+//   FaShieldAlt,
+//   FaExclamationTriangle,
+//   FaCheckCircle,
+//   FaServer,
+//   FaNetworkWired,
+//   FaTachometerAlt
+// } from 'react-icons/fa';
+// import config from '../config';
+
+// ChartJS.register(ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
+
+// const Dashboard = () => {
+//   const { token } = useContext(AuthContext);
+
+//   const [summary, setSummary] = useState({
+//     totalVulnerabilities: 0,
+//     openVulnerabilities: 0,
+//     resolvedVulnerabilities: 0,
+//     inprogressVulnerabilities: 0,
+//     totalAssets: 0,
+//     onlineAssets: 0,
+//     offlineAssets: 0,
+//     severityCount: {},
+//     statusCount: {},
+//     riskLevels: {},
+//     lastScanDate: null,
+//   });
+
+//   const [latestScans, setLatestScans] = useState([]);
+//   const [loadingScans, setLoadingScans] = useState(false);
+//   const [showScans, setShowScans] = useState(false);
+//   const [progress, setProgress] = useState({ percent: 0, message: '', active: false });
+//   const [searchTerm, setSearchTerm] = useState(''); // ✅ Added for filter
+//   const [scanStats, setScanStats] = useState({ activeScanCount: 0, maxConcurrentScans: 3 });
+
+//   useEffect(() => {
+//     const fetchDashboardData = async () => {
+//       try {
+//         const res = await fetch(`${config.API_BASE_URL}/api/dashboard/summary`, {
+//           headers: { Authorization: `Bearer ${token}` },
+//         });
+//         const data = await res.json();
+//         setSummary(data);
+//       } catch (error) {
+//         console.error('Failed to load dashboard data:', error);
+//       }
+//     };
+
+//     fetchDashboardData();
+//   }, [token]);
+
+//   useEffect(() => {
+//     const fetchScans = async () => {
+//       setLoadingScans(true);
+//       try {
+//         const res = await fetch(`${config.API_BASE_URL}/api/scan/lates`, {
+//           headers: { Authorization: `Bearer ${token}` },
+//         });
+//         const data = await res.json();
+//         setLatestScans(data);
+//       } catch (err) {
+//         console.error('Failed to load scan results');
+//       } finally {
+//         setLoadingScans(false);
+//       }
+//     };
+
+//     fetchScans();
+//   }, [token]);
+
+//   useEffect(() => {
+//     if (!loadingScans) return;
+//     const interval = setInterval(async () => {
+//       try {
+//         const res = await fetch(`${config.API_BASE_URL}/api/scan/progress`, {
+//           headers: { Authorization: `Bearer ${token}` },
+//         });
+//         const data = await res.json();
+//         setProgress(data);
+//         if (!data.active) clearInterval(interval);
+//       } catch (err) {
+//         console.error('Error fetching progress');
+//         clearInterval(interval);
+//       }
+//     }, 2000);
+//     return () => clearInterval(interval);
+//   }, [loadingScans, token]);
+
+//   const handleQuickScan = async () => {
+//     const confirmed = window.confirm('Run a quick scan for all assets?');
+//     if (!confirmed) return;
+
+//     setLoadingScans(true);
+//     try {
+//       const res = await fetch(`${config.API_BASE_URL}/api/scan/quick`, {
+//         method: 'POST',
+//         headers: { Authorization: `Bearer ${token}` },
+//       });
+//       const data = await res.json();
+//       setLatestScans(data.logs || []);
+//       alert('Scan completed!');
+//     } catch (err) {
+//       console.error(err);
+//       alert('Quick scan failed.');
+//     } finally {
+//       setLoadingScans(false);
+//       setProgress({ percent: 0, message: '', active: false });
+//     }
+//   };
+
+//   const severityColors = {
+//     Critical: 'danger',
+//     High: 'warning',
+//     Medium: 'info',
+//     Low: 'secondary',
+//   };
+//   // Enhanced severity colors
+//   // const severityColors = {
+//   //   Critical: '#dc3545',
+//   //   High: '#fd7e14',
+//   //   Medium: '#ffc107',
+//   //   Low: '#20c997',
+//   //   Informational: '#6c757d',
+//   // };
+
+//   // Risk level colors
+//   const riskColors = {
+//     Critical: '#dc3545',
+//     High: '#fd7e14',
+//     Medium: '#ffc107',
+//     Low: '#28a745',
+//   };
+
+//   // ✅ Filter scan results based on search term
+//   const filteredScans = latestScans.filter((scan) =>
+//     Object.values(scan)
+//       .join(' ')
+//       .toLowerCase()
+//       .includes(searchTerm.toLowerCase())
+//   );
+
+//   // Enhanced chart data for vulnerabilities by severity
+//   const severityChartData = {
+//     labels: Object.keys(summary.severityCount || {}),
+//     datasets: [
+//       {
+//         data: Object.values(summary.severityCount || {}),
+//         backgroundColor: Object.keys(summary.severityCount || {}).map(
+//           severity => severityColors[severity] || '#6c757d'
+//         ),
+//         borderWidth: 2,
+//         borderColor: '#fff',
+//       },
+//     ],
+//   };
+
+//   // Chart data for vulnerability status
+//   const statusChartData = {
+//     labels: Object.keys(summary.statusCount || {}),
+//     datasets: [
+//       {
+//         data: Object.values(summary.statusCount || {}),
+//         backgroundColor: ['#28a745', '#ffc107', '#dc3545', '#6c757d'],
+//         borderWidth: 2,
+//         borderColor: '#fff',
+//       },
+//     ],
+//   };
+
+//     // Risk level chart data
+//   const riskChartData = {
+//     labels: Object.keys(summary.riskLevels || {}),
+//     datasets: [
+//       {
+//         label: 'Assets by Risk Level',
+//         data: Object.values(summary.riskLevels || {}),
+//         backgroundColor: Object.keys(summary.riskLevels || {}).map(
+//           risk => riskColors[risk] || '#6c757d'
+//         ),
+//         borderWidth: 1,
+//         borderColor: '#fff',
+//       },
+//     ],
+//   };
+
+//   const chartOptions = {
+//     responsive: true,
+//     maintainAspectRatio: false,
+//     plugins: {
+//       legend: {
+//         position: 'bottom',
+//         labels: {
+//           padding: 15,
+//           usePointStyle: true,
+//         },
+//       },
+//     },
+//   };
+
+//   return (
+//     <Container fluid className="container mt-4" style={{ backgroundColor: '#F1F8FD', minHeight: '100vh' }}>
+//       <h3 style={{ color: '#1594EA' }} className="mb-4 d-flex align-items-center">
+//         <FaTachometerAlt className="me-2"/> Dashboard Overview
+//       </h3>
+
+//       <Row className="mb-4">
+//         <Col>
+//           <Card className="shadow-sm border-0 rounded-4 p-3">
+//             <Card.Body>
+//               <div className="d-flex justify-content-between align-items-center flex-wrap">
+//                 <div>
+//                   <h5 className="mb-1">Quick Actions</h5>
+//                   <p className="text-muted mb-0">Manage your security scanning operations</p>
+//                 </div>
+//                 <div className="d-flex gap-2">
+//                   <Button
+//                     variant="success"
+//                     onClick={handleQuickScan}
+//                     disabled={loadingScans || progress.active}
+//                     className="d-flex align-items-center"
+//                   >
+//                     {loadingScans || progress.active ? (
+//                       <>
+//                         <Spinner size="sm" animation="border" className="me-2" />
+//                         Scanning...
+//                       </>
+//                     ) : (
+//                       <>
+//                         <FaSyncAlt className="me-2" /> Run Quick Scan
+//                       </>
+//                     )}
+//                   </Button>
+                  
+//                   <Button
+//                     variant="outline-primary"
+//                     onClick={() => setShowScans(!showScans)}
+//                     className="d-flex align-items-center"
+//                   >
+//                     <FaListUl className="me-2" />
+//                     {showScans ? (
+//                       <>
+//                         Hide Recent Scans <FaChevronUp className="ms-1" />
+//                       </>
+//                     ) : (
+//                       <>
+//                         Show Recent Scans <FaChevronDown className="ms-1" />
+//                       </>
+//                     )}
+//                   </Button>
+//                 </div>
+//               </div>
+//             </Card.Body>
+//           </Card>
+//         </Col>
+//       </Row>
+//       {/* <div className="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+//         <Button
+//           variant="primary"
+//           onClick={handleQuickScan}
+//           disabled={loadingScans}
+//           className="d-flex align-items-center gap-2 rounded-pill shadow-sm"
+//           style={{ backgroundColor: '#1594EA', border: 'none' }}
+//         >
+//           {loadingScans ? (
+//             <>
+//               <Spinner size="sm" animation="border" />
+//               Scanning...
+//             </>
+//           ) : (
+//             <>
+//               <FaSyncAlt /> Run Quick Scan
+//             </>
+//           )}
+//         </Button>
+
+//         <Button
+//           variant="light"
+//           onClick={() => setShowScans(!showScans)}
+//           className="d-flex align-items-center gap-2 border rounded-pill shadow-sm"
+//           style={{ color: '#1594EA' }}
+//         >
+//           <FaListUl />
+//           {showScans ? (
+//             <>
+//               Hide Recent Scan Logs <FaChevronUp />
+//             </>
+//           ) : (
+//             <>
+//               Show Recent Scan Logs <FaChevronDown />
+//             </>
+//           )}
+//         </Button>
+//       </div>
+
+//       {loadingScans && progress.active && (
+//         <div className="mb-4">
+//           <strong className="text-muted">{progress.message}</strong>
+//           <ProgressBar
+//             now={progress.percent}
+//             label={`${progress.percent}%`}
+//             animated
+//             striped
+//             variant="primary"
+//             className="rounded-pill"
+//           />
+//         </div>
+//       )} */}
+
+//       <Collapse in={showScans}>
+//         <div className="mb-5">
+//           <h5 className="mb-3 text-secondary fw-semibold d-flex align-items-center">
+//             <FaListUl className="me-2" />
+//             Latest Scan Results
+//           </h5>
+
+//           {/* ✅ Search Bar */}
+//           <InputGroup className="mb-3">
+//             <InputGroup.Text>
+//               <FaSearch />
+//             </InputGroup.Text>
+//             <Form.Control
+//               placeholder="Search scans..."
+//               value={searchTerm}
+//               onChange={(e) => setSearchTerm(e.target.value)}
+//             />
+//           </InputGroup>
+
+//           {loadingScans ? (
+//             <Spinner animation="border" />
+//           ) : (
+//             <Table striped bordered hover responsive className="align-middle shadow-sm rounded">
+//               <thead style={{ backgroundColor: '#1594EA', color: '#fff' }}>
+//                 <tr>
+//                   <th>Asset</th>
+//                   <th>Port</th>
+//                   <th>Protocol</th>
+//                   <th>Status</th>
+//                   <th>Service</th>
+//                   <th>Product</th>
+//                   <th>Version</th>
+//                   <th>CPE</th>
+//                   <th>Score</th>
+//                   <th>#Vulns</th>
+//                   <th>Notes</th>
+//                   <th>Scanned At</th>
+//                 </tr>
+//               </thead>
+//               <tbody>
+//                 {filteredScans.length === 0 ? (
+//                   <tr>
+//                     <td colSpan="12" className="text-center text-muted">
+//                       No scans found.
+//                     </td>
+//                   </tr>
+//                 ) : (
+//                   filteredScans.map((scan, i) => (
+//                     <tr key={i}>
+//                       <td>{scan.asset?.name || scan.assetName || scan.host || 'Unknown'}</td>
+//                       <td>{scan.port ?? '-'}</td>
+//                       <td>{scan.protocol ?? '-'}</td>
+//                       <td>{scan.state ?? '-'}</td>
+//                       <td>{scan.service ?? '-'}</td>
+//                       <td>{scan.product ?? '-'}</td>
+//                       <td>{scan.version ?? '-'}</td>
+//                       <td>{scan.cpe ?? '-'}</td>
+//                       <td>
+//                         <Badge
+//                           bg={
+//                             scan.vulnerabilityScore >= 8
+//                               ? 'danger'
+//                               : scan.vulnerabilityScore >= 5
+//                               ? 'warning'
+//                               : scan.vulnerabilityScore > 0
+//                               ? 'info'
+//                               : 'secondary'
+//                           }
+//                           className="rounded-pill px-3"
+//                         >
+//                           {scan.vulnerabilityScore ?? 0}
+//                         </Badge>
+//                       </td>
+//                       <td>{scan.vulnerabilities?.length || 0}</td>
+//                       <td style={{ whiteSpace: 'pre-line', maxWidth: 200 }}>
+//                         {scan.notes || '-'}
+//                       </td>
+//                       <td>{new Date(scan.scannedAt || scan.createdAt).toLocaleString()}</td>
+//                     </tr>
+//                   ))
+//                 )}
+//               </tbody>
+//             </Table>
+//           )}
+//         </div>
+//       </Collapse>
+
+//       <Row className="mb-4 g-4">
+//         <Col md={3}>
+//           <Card className="shadow-sm border-0 rounded-4" style={{ backgroundColor: '#1594EA', color: '#fff' }}>
+//             <Card.Body>
+//               <Card.Title className="fw-bold"><FaShieldAlt size={30} className="" /> Total Vulnerabilities</Card.Title>
+//               <h3>{summary.totalVulnerabilities}</h3>
+//               <small className="">
+//                 {summary.openVulnerabilities} open, {summary.resolvedVulnerabilities} resolved, {summary.inprogressVulnerabilities} in progress
+//               </small>
+//             </Card.Body>
+//           </Card>
+//         </Col>
+//         <Col md={3}>
+//           <Card className="shadow-sm border-0 rounded-4" style={{ backgroundColor: '#1594EA', color: '#fff' }}>
+//             <Card.Body>
+//               <Card.Title className="fw-bold"><FaServer size={30} className="" /> Total Assets</Card.Title>
+//               <h3>{summary.totalAssets}</h3>
+//               <small className="">
+//                 {summary.onlineAssets} online, {summary.offlineAssets} offline
+//               </small>
+//             </Card.Body>
+//           </Card>
+//         </Col>
+//         <Col md={3}>
+//           <Card className="shadow-sm border-0 rounded-4" style={{ backgroundColor: '#dc3545', color: '#fff' }}>
+//             <Card.Body>
+//               <Card.Title className="fw-bold"> <FaExclamationTriangle size={30} className="" /> Open Vulnerabilities</Card.Title>
+//               <h3>{summary.openVulnerabilities}</h3>
+//               <small className="">{summary.severityCount?.Critical || 0} Critical, Requires immediate attention</small>
+//             </Card.Body>
+//           </Card>
+//         </Col>
+//         <Col md={3}>
+//           <Card className="text-white bg-success shadow-sm border-0 rounded-4">
+//             <Card.Body className="">
+//               <Card.Title className="fw-bold">               <FaCheckCircle size={30} className="" /> Resolved Vulnerabilities</Card.Title>
+//               <h4>{summary.resolvedVulnerabilities}</h4>
+//             </Card.Body>
+//           </Card>
+//         </Col>
+//       </Row>
+
+//       <h4 style={{ color: '#1594EA' }} className="mt-5">Vulnerabilities by Severity</h4>
+//       <Row className="g-4 mt-2">
+//         {Object.entries(summary.severityCount).map(([level, count]) => (
+//           <Col md={3} key={level}>
+//             <Card
+//               className={`shadow-sm border-0 rounded-4 text-white`}
+//               style={{ backgroundColor: severityColors[level] === 'danger' ? '#dc3545' : severityColors[level] === 'warning' ? '#fd7e14' : severityColors[level] === 'info' ? '#0dcaf0' : '#6c757d' }}
+//             >
+//               <Card.Body>
+//                 <Card.Title className="fw-bold">{level}</Card.Title>
+//                 <h4>{count}</h4>
+//               </Card.Body>
+//             </Card>
+//           </Col>
+//         ))}
+//       </Row>
+
+//       <h4 style={{ color: '#1594EA' }} className="mt-5">Vulnerability Overview</h4>
+//       <Row>
+//         <Col md={6}>
+//         <Card className="shadow-sm border-0 rounded-4 p-3">
+//           <h6 className="text-center text-muted">By Severity</h6>
+//           <Pie
+//             data={{
+//               labels: Object.keys(summary.severityCount),
+//               datasets: [
+//                 {
+//                   data: Object.values(summary.severityCount),
+//                   backgroundColor: ['#dc3545', '#fd7e14', '#0dcaf0', '#6c757d'],
+//                   borderWidth: 1,
+//                 },
+//               ],
+//             }}
+//             options={{ responsive: true }}
+//           />
+//         </Card>
+//         </Col>
+
+//         <Col md={6}>
+//         <Card className="shadow-sm border-0 rounded-4 p-3">
+//           <h6 className="text-center text-muted">By Status</h6>
+//           <Bar
+//             data={{
+//               labels: Object.keys(summary.statusCount),
+//               datasets: [
+//                 {
+//                   label: 'Vulnerabilities',
+//                   data: Object.values(summary.statusCount),
+//                   backgroundColor: '#1594EA',
+//                 },
+//               ],
+//             }}
+//             options={{
+//               responsive: true,
+//               scales: {
+//                 y: { 
+//                   beginAtZero: true,
+//                   // ticks: { stepSize: 1 },
+//                   // grid: { color: '#e5e5e5' },
+//                 },
+//                 // x: {
+//                 //   grid: { display: true },
+//                 // },
+//               },
+//             }}
+//           />
+//         </Card>
+//         </Col>
+//       </Row>
+//     </Container>
+//   );
+// };
+
+// export default Dashboard;

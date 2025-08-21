@@ -71,6 +71,7 @@ const AssetSchema = new mongoose.Schema(
     serverAdministrator: { type: String, trim: true },
     description: { type: String, trim: true },
     owner: { type: String, trim: true },
+    lastScanDate: { type: Date },
   },
   { timestamps: true }
 );

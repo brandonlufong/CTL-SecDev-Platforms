@@ -18,9 +18,11 @@ app.use('/api/vulnerabilities', require('./routes/vulnerabilityRoutes'));
 app.use('/api/assets', require('./routes/assetRoutes'));
 app.use('/api/dashboard', require('./routes/dashboardRoutes'));
 app.use('/api/scan', require('./routes/scanRoutes'));
+app.use('/api/devices', require('./routes/deviceRoutes'));
 
 const http = require('http').createServer(app);
 const { Server } = require('socket.io');
+const progressTracker = require('./services/scanProgress');
 
 const io = new Server(http, {
   cors: {
@@ -29,9 +31,8 @@ const io = new Server(http, {
   },
 });
 
-// Make io available globally or via a module to controllers
-// We'll export io so controllers can import and emit events
-module.exports.io = io;
+app.set('io', io);
+progressTracker.init(io);
 
 io.on('connection', (socket) => {
   console.log(`Socket connected: ${socket.id}`);

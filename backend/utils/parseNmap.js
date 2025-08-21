@@ -1,155 +1,170 @@
-// module.exports = function parseNmapOutput(output, ip) {
-//   const lines = output.split('\n');
-//   const results = [];
+const xml2js = require('xml2js');
 
-//   let inPortSection = false;
+/**
+ * Enhanced Nmap output parser with better service detection and CPE extraction
+ */
 
-//   for (let line of lines) {
-//     line = line.trim();
+async function parseNmapXml(xmlOutput) {
+  const parser = new xml2js.Parser({ explicitArray: false });
+  
+  try {
+    const result = await parser.parseStringPromise(xmlOutput);
+    const host = result?.nmaprun?.host;
+    if (!host) return [];
 
-//     if (line.startsWith('PORT')) {
-//       inPortSection = true;
-//       continue;
-//     }
+    const ports = host.ports?.port;
+    if (!ports) return [];
 
-//     if (inPortSection && line && /^[0-9]/.test(line)) {
-//       const parts = line.split(/\s+/);
-//       const [portProto, state, service] = parts;
+    const portArray = Array.isArray(ports) ? ports : [ports];
+    
+    return portArray.map(port => {
+      const portInfo = port.$ || {};
+      const state = port.state?.$ || {};
+      const service = port.service?.$ || {};
+      
+      let cpe = '';
+      if (service.cpe) {
+        cpe = Array.isArray(service.cpe) ? service.cpe[0] : service.cpe;
+      }
+      
+      let vulnerabilities = [];
+      let scriptOutput = '';
+      
+      if (port.script) {
+        const scripts = Array.isArray(port.script) ? port.script : [port.script];
+        scripts.forEach(script => {
+          if (script.$.id === 'vulners') {
+            scriptOutput = script._ || '';
+            const cveMatches = scriptOutput.match(/CVE-\d{4}-\d{4,}/g);
+            if (cveMatches) {
+              vulnerabilities.push(...cveMatches);
+            }
+          }
+        });
+      }
 
-//       const [port] = portProto.split('/');
+      return {
+        port: parseInt(portInfo.portid, 10) || 0,
+        protocol: portInfo.protocol || 'tcp',
+        state: state.state || 'unknown',
+        service: service.name || 'unknown',
+        product: service.product || '',
+        version: service.version || '',
+        extraInfo: service.extrainfo || '',
+        cpe: cpe,
+        vulnerabilities: vulnerabilities,
+        scriptOutput: scriptOutput,
+        confidence: parseInt(service.conf, 10) || 0
+      };
+    });
+  } catch (error) {
+    console.error('XML parsing failed, falling back to text parsing:', error.message);
+    return parseNmapText(xmlOutput);
+  }
+}
 
-//       results.push({
-//         port: parseInt(port),
-//         state,
-//         service,
-//       });
-//     }
-
-//     if (inPortSection && line === '') break;
-//   }
-
-//   return results;
-// };
-module.exports = function parseNmapOutput(output) {
+function parseNmapText(output) {
   const lines = output.split('\n');
   const results = [];
-
+  
   let inPortSection = false;
-  let currentResult = null;
 
   for (let line of lines) {
     line = line.trim();
 
-    // Start of port section
-    if (line.startsWith('PORT')) {
+    if (line.startsWith('PORT') && line.includes('STATE') && line.includes('SERVICE')) {
       inPortSection = true;
       continue;
     }
 
-    // End of port section
-    if (inPortSection && line === '') {
+    if (inPortSection && (line === '' || line.startsWith('Service detection') || line.startsWith('Nmap done'))) {
       inPortSection = false;
       continue;
     }
 
-    // Parse port line
     if (inPortSection && /^[0-9]/.test(line)) {
       const parts = line.split(/\s+/);
-      const [portProto, state, service, ...rest] = parts;
-      const [port, protocol] = portProto.split('/');
+      if (parts.length >= 3) {
+        const [portProto, state, service, ...versionParts] = parts;
+        const [port, protocol] = portProto.split('/');
+        const versionInfo = versionParts.join(' ');
+        
+        const result = {
+          port: parseInt(port, 10),
+          protocol: protocol || 'tcp',
+          state: state,
+          service: service,
+          product: '',
+          version: '',
+          extraInfo: '',
+          cpe: '',
+          vulnerabilities: [],
+          confidence: 0
+        };
 
-      const versionInfo = rest.join(' '); // Might contain product/version/CPE info
+        if (versionInfo) {
+          const productVersionMatch = versionInfo.match(/^([^0-9\(]+?)\s+([0-9][^\s\(]*)/);
+          if (productVersionMatch) {
+            result.product = productVersionMatch[1].trim();
+            result.version = productVersionMatch[2].trim();
+          } else {
+            result.product = versionInfo.replace(/\([^)]*\)/g, '').trim();
+          }
 
-      currentResult = {
-        port: parseInt(port, 10),
-        protocol,
-        state,
-        service,
-        product: '',
-        version: '',
-        cpe: '',
-        vulnerabilityScore: 0,
-        notes: '',
-        vulnerabilities: [],
-      };
+          const extraInfoMatch = versionInfo.match(/\(([^)]+)\)/);
+          if (extraInfoMatch) {
+            result.extraInfo = extraInfoMatch[1];
+          }
 
-      // Attempt to parse product/version from versionInfo
-      const versionMatch = versionInfo.match(/(.+?)\s+([0-9][\w\.\-]+)/);
-      if (versionMatch) {
-        currentResult.product = versionMatch[1].trim();
-        currentResult.version = versionMatch[2].trim();
-      } else {
-        currentResult.product = versionInfo.trim();
+          const cpeMatch = versionInfo.match(/cpe:\/[^\s)]+/i);
+          if (cpeMatch) {
+            result.cpe = cpeMatch[0];
+          }
+        }
+
+        results.push(result);
       }
-
-      results.push(currentResult);
     }
 
-    // Parse CPE or vulnerabilities under each port
-    if (currentResult && line.startsWith('|')) {
-      if (line.includes('CPE:')) {
-        const cpeMatch = line.match(/CPE:\s*(cpe:\/[^\s]+)/i);
-        if (cpeMatch) currentResult.cpe = cpeMatch[1];
-      }
-
-      if (line.includes('CVE')) {
-        const cveMatches = [...line.matchAll(/(CVE-\d{4}-\d{4,7})/gi)];
-        const cves = cveMatches.map(match => match[1].toUpperCase());
-        currentResult.vulnerabilities.push(...cves);
-
-        // Score is just a count for now — you could fetch real CVSS later
-        currentResult.vulnerabilityScore = cves.length;
+    if (line.includes('CVE-')) {
+      const cveMatches = line.match(/CVE-\d{4}-\d{4,}/g);
+      if (cveMatches && results.length > 0) {
+        const lastResult = results[results.length - 1];
+        lastResult.vulnerabilities.push(...cveMatches);
       }
     }
   }
 
   return results;
+}
+
+function generateCPE(serviceInfo) {
+  const { product, version, service } = serviceInfo;
+  if (!product) return '';
+  const cpeProduct = product.toLowerCase().replace(/\s+/g, '_');
+  const cpeVersion = version || '*';
+  let cpePart = 'a';
+  if (['ssh', 'http', 'https', 'ftp', 'smtp', 'mysql'].includes(service)) {
+    cpePart = 'a';
+  }
+  return `cpe:/${cpePart}:${cpeProduct}:${cpeProduct}:${cpeVersion}`;
+}
+
+module.exports = async function parseNmapOutput(output) {
+  if (output.includes('<?xml') || output.includes('<nmaprun')) {
+    return await parseNmapXml(output);
+  } else {
+    const results = parseNmapText(output);
+    return results.map(result => {
+      if (!result.cpe && result.product) {
+        result.cpe = generateCPE(result);
+      }
+      return result;
+    });
+  }
 };
 
-
-// module.exports = async function parseNmapXml(xml, ip) {
-//   const parser = new xml2js.Parser({ explicitArray: false });
-
-//   try {
-//     const result = await parser.parseStringPromise(xml);
-//     const portsData = result?.nmaprun?.host?.ports?.port;
-
-//     if (!portsData) return []; // No ports to process
-
-//     // Normalize to array if only one port
-//     const portArray = Array.isArray(portsData) ? portsData : [portsData];
-
-//     return portArray.map((port) => {
-//       const portMeta = port?.$ || {};
-//       const stateMeta = port?.state?.$ || {};
-//       const serviceMeta = port?.service?.$ || {};
-//       const cpeData = port?.service?.cpe;
-
-//       // Vulnerability scripts, e.g. from Vulners NSE script
-//       let vulns = [];
-//       if (Array.isArray(port.script)) {
-//         vulns = port.script
-//           .filter((s) => s?.$?.id === 'vulners')
-//           .map((s) => s._ || '')
-//           .filter(Boolean);
-//       } else if (port?.script?.$?.id === 'vulners') {
-//         vulns = [port.script._ || ''];
-//       }
-
-//       return {
-//         port: parseInt(portMeta.portid, 10) || 0,
-//         protocol: portMeta.protocol || 'tcp',
-//         state: stateMeta.state || 'unknown',
-//         service: serviceMeta.name || '',
-//         product: serviceMeta.product || '',
-//         version: serviceMeta.version || '',
-//         cpe: Array.isArray(cpeData) ? cpeData[0] : cpeData || serviceMeta.cpe || '',
-//         vulnerabilities: vulns,
-//       };
-//     });
-//   } catch (err) {
-//     console.error('Nmap XML parsing error:', err.message);
-//     return [];
-//   }
-// };
+module.exports.parseNmapXml = parseNmapXml;
+module.exports.parseNmapText = parseNmapText;
+module.exports.generateCPE = generateCPE;
 

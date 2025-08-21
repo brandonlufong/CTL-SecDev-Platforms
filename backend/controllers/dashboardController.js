@@ -8,6 +8,7 @@ exports.getDashboardSummary = async (req, res) => {
     const resolvedVulnerabilities = await Vulnerability.countDocuments({ status: 'Resolved' });
     const inprogressVulnerabilities = await Vulnerability.countDocuments({ status: 'In Progress' });
     const totalAssets = await Asset.countDocuments();
+    const criticalOpenCount = await Vulnerability.countDocuments({ severity: 'Critical', status: 'Open' });
 
     const severityAggregation = await Vulnerability.aggregate([
       { $group: { _id: '$severity', count: { $sum: 1 } } }
@@ -33,6 +34,7 @@ exports.getDashboardSummary = async (req, res) => {
       openVulnerabilities,
       resolvedVulnerabilities,
       inprogressVulnerabilities,
+      criticalOpenCount,
       totalAssets,
       severityCount,
       statusCount

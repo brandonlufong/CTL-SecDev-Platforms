@@ -8,7 +8,7 @@ const TopNavbar = () => {
   const { user } = useContext(AuthContext);
 
   const handleLogout = () => {
-    localStorage.removeItem('token'); // Example
+    localStorage.removeItem('token');
     navigate('/login');
   };
 
@@ -69,7 +69,7 @@ const TopNavbar = () => {
             </NavLink>
 
             <NavLink
-              to="/assets"
+              to="/servers"
               className="nav-link"
               style={({ isActive }) => ({
                 color: isActive ? '#F0F9FF' : '#F0F9FF',
@@ -79,7 +79,21 @@ const TopNavbar = () => {
                 margin: '0 0.3rem',
               })}
             >
-              Assets
+              Server Assets
+            </NavLink>
+
+            <NavLink
+              to="/devices"
+              className="nav-link"
+              style={({ isActive }) => ({
+                color: isActive ? '#F0F9FF' : '#F0F9FF',
+                backgroundColor: isActive ? '#0D6EBD' : 'transparent',
+                borderRadius: '5px',
+                padding: '0.5rem 1rem',
+                margin: '0 0.3rem',
+              })}
+            >
+              Network Devices
             </NavLink>
           </Nav>
 
