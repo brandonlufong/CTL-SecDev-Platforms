@@ -435,9 +435,9 @@ const Dashboard = () => {
                               filteredScans.map((scan, i) => (
                                 <tr key={i}>
                                   <td>
-                                    <strong>{scan.asset?.name || 'Unknown'}</strong>
+                                    <strong>{scan.asset?.name || scan.device?.name || 'Unknown'}</strong>
                                     <br />
-                                    <small className="text-muted">{scan.asset?.ip || '-'}</small>
+                                    <code>{scan.asset?.ip || scan.device?.ip || '-'}</code>
                                   </td>
                                   <td><code>{scan.port ?? '-'}</code></td>
                                   <td>{scan.protocol ?? '-'}</td>

@@ -435,12 +435,21 @@ exports.runQuickScan = async (req, res) => {
 
 exports.getLatestScans = async (req, res) => {
   try {
-    const { limit = 10, assetId } = req.query;
-    const filter = assetId ? { asset: assetId } : {};
+    const { limit = 10, assetId, deviceId } = req.query;
+    
+    // Build filter for either asset or device
+    let filter = {};
+    if (assetId) {
+      filter.asset = assetId;
+    } else if (deviceId) {
+      filter.device = deviceId;
+    }
+    
     const latestScans = await ScanResult.find(filter)
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
-      .populate('asset', 'name ip type')
+      .populate('asset', 'name ip type')        // Populate asset
+      .populate('device', 'name ip type')       // Populate device - THIS WAS MISSING
       .populate('vulnerabilities', 'title cve severity cvssScore status');
 
     res.json({
