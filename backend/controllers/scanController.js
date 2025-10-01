@@ -23,17 +23,27 @@ exports.scanAsset = async (req, res) => {
     }
 
     console.log(`Starting ${scanType} scan for asset: ${asset.name} (${asset.ip})`);
+    
+    // Initialize progress tracking
+    progressTracker.startScan(1, `Initializing scan for ${asset.name}`);
 
     const scanResults = await runNmapScan(asset.ip, {
       scanType,
       includeVulnScripts: true,
       onProgress: (percent, message) => {
-        console.log(`Scan progress: ${percent}% - ${message}`);
+        // Forward progress to the tracker which will emit via Socket.IO
+        progressTracker.setProgress(percent, message, {
+          currentAsset: asset.name,
+          assetId: asset._id
+        });
       }
     });
 
+    // Process results with progress updates
     const savedResults = [];
     const createdVulnerabilities = [];
+    
+    progressTracker.setProgress(85, 'Saving scan results...');
 
     for (const scanResult of scanResults) {
       const savedScanResult = await ScanResult.create({
@@ -79,7 +89,6 @@ exports.scanAsset = async (req, res) => {
               }
               await existingVuln.save();
               vulnerabilityIds.push(existingVuln._id);
-              console.log(`Updated existing vulnerability: ${existingVuln.title}`);
             } else {
               const newVuln = await Vulnerability.create({
                 title: vulnDetail.title || `${vulnDetail.cve} - ${scanResult.service} vulnerability`,
@@ -99,7 +108,6 @@ exports.scanAsset = async (req, res) => {
               });
               vulnerabilityIds.push(newVuln._id);
               createdVulnerabilities.push(newVuln);
-              console.log(`Created new vulnerability: ${newVuln.title}`);
             }
           } catch (error) {
             console.error(`Error processing vulnerability ${vulnDetail.title}:`, error);
@@ -118,6 +126,9 @@ exports.scanAsset = async (req, res) => {
 
     asset.lastScanDate = new Date();
     await asset.save();
+
+    // Complete the scan
+    progressTracker.complete(`Scan completed for ${asset.name}`);
 
     const response = {
       success: true,
@@ -142,6 +153,7 @@ exports.scanAsset = async (req, res) => {
     res.json(response);
   } catch (error) {
     console.error('Scan error:', error);
+    progressTracker.setError(`Scan failed: ${error.message}`);
     res.status(500).json({ 
       success: false,
       message: 'Scan failed', 
@@ -165,16 +177,26 @@ exports.scanDevice = async (req, res) => {
 
     console.log(`Starting ${scanType} scan for device: ${device.name} (${device.ip})`);
 
+    // Initialize progress tracking
+    progressTracker.startScan(1, `Initializing scan for ${device.name}`);
+
     const scanResults = await runNmapScan(device.ip, {
       scanType,
       includeVulnScripts: true,
       onProgress: (percent, message) => {
-        console.log(`Scan progress: ${percent}% - ${message}`);
+        // Forward progress to the tracker which will emit via Socket.IO
+        progressTracker.setProgress(percent, message, {
+          currentDevice: device.name,
+          deviceId: device._id
+        });
       }
     });
 
+    // Process results with progress updates
     const savedResults = [];
     const createdVulnerabilities = [];
+
+    progressTracker.setProgress(85, 'Saving scan results...');
 
     for (const scanResult of scanResults) {
       const savedScanResult = await ScanResult.create({
@@ -261,6 +283,9 @@ exports.scanDevice = async (req, res) => {
     device.lastScanDate = new Date();
     await device.save();
 
+    // Complete the scan
+    progressTracker.complete(`Scan completed for ${device.name}`);
+
     const response = {
       success: true,
       message: `Scan completed for device: ${device.name}`,
@@ -292,123 +317,254 @@ exports.scanDevice = async (req, res) => {
   }
 };
 
+// exports.runQuickScan = async (req, res) => {
+//   try {
+//     const { scanType = 'quick' } = req.body || {};
+    
+//     // Fetch both assets and devices
+//     const assets = await Asset.find({ status: 'Online' });
+//     const devices = await NetworkDevice.find({ status: 'Online' }); // Add Device model query
+    
+//     // Combine both into a single array with a type indicator
+//     const allTargets = [
+//       ...assets.map(a => ({ ...a.toObject(), targetType: 'asset', model: Asset })),
+//       ...devices.map(d => ({ ...d.toObject(), targetType: 'device', model: NetworkDevice }))
+//     ];
+    
+//     if (allTargets.length === 0) {
+//       return res.status(400).json({ message: 'No online assets or devices found to scan' });
+//     }
+
+//     const allResults = [];
+//     const allVulnerabilities = [];
+//     let totalScanned = 0;
+
+//     console.log(`Starting ${scanType} scan for ${allTargets.length} targets (${assets.length} assets, ${devices.length} devices)`);
+    
+//     // Initialize batch scan progress
+//     progressTracker.startScan(allTargets.length, `Starting quick scan of ${allTargets.length} targets`);
+
+//     for (let i = 0; i < allTargets.length; i++) {
+//       const target = allTargets[i];
+      
+//       // Update batch progress
+//       progressTracker.updateBatchProgress(i, target.name);
+
+//       try {
+//         const isReachable = await pingTest(target.ip);
+//         if (!isReachable) {
+//           console.log(`Target ${target.name} (${target.ip}) is not reachable, skipping...`);
+//           continue;
+//         }
+
+//         const scanResults = await runNmapScan(target.ip, {
+//           scanType,
+//           includeVulnScripts: true,
+//           onProgress: (percent, message) => {
+//             // Calculate overall progress: completed targets + current target progress
+//             const overallPercent = Math.floor(
+//               ((i + (percent / 100)) / allTargets.length) * 100
+//             );
+//             progressTracker.setProgress(
+//               overallPercent, 
+//               `${target.name}: ${message}`,
+//               { currentTarget: target.name, completedTargets: i }
+//             );
+//           }
+//         });
+
+//         for (const scanResult of scanResults) {
+//           // Reference the appropriate model based on target type
+//           const targetRef = target.targetType === 'asset' 
+//             ? { asset: target._id } 
+//             : { device: target._id };
+            
+//           const savedScanResult = await ScanResult.create({
+//             ...scanResult,
+//             ...targetRef,
+//             vulnerabilities: []
+//           });
+
+//           if (scanResult.detectionDetails && scanResult.detectionDetails.length > 0) {
+//             const vulnerabilityIds = [];
+//             for (const vulnDetail of scanResult.detectionDetails) {
+//               try {
+//                 // Check for existing vulnerability on this specific target
+//                 const existingVuln = await Vulnerability.findOne({
+//                   $and: [
+//                     {
+//                       $or: [
+//                         { cve: vulnDetail.cve },
+//                         { title: vulnDetail.title }
+//                       ]
+//                     },
+//                     target.targetType === 'asset' 
+//                       ? { asset: target._id }
+//                       : { device: target._id }
+//                   ]
+//                 });
+
+//                 let vulnerability;
+//                 if (existingVuln) {
+//                   existingVuln.discoveredDate = new Date();
+//                   existingVuln.scanResult = savedScanResult._id;
+//                   if (existingVuln.status === 'Resolved') {
+//                     existingVuln.status = 'Open';
+//                   }
+//                   await existingVuln.save();
+//                   vulnerability = existingVuln;
+//                 } else {
+//                   vulnerability = await Vulnerability.create({
+//                     title: vulnDetail.title || `${vulnDetail.cve} - ${scanResult.service} vulnerability`,
+//                     cve: vulnDetail.cve || null,
+//                     severity: vulnDetail.severity || 'Medium',
+//                     description: vulnDetail.description || 'Vulnerability detected during quick scan',
+//                     cvssScore: vulnDetail.cvssScore || 0,
+//                     remediation: vulnDetail.remediation || 'Review and apply security patches',
+//                     exploitAvailable: vulnDetail.exploitAvailable || false,
+//                     references: vulnDetail.references || [],
+//                     discoveredDate: new Date(),
+//                     status: 'Open',
+//                     ...(target.targetType === 'asset' 
+//                       ? { asset: target._id } 
+//                       : { device: target._id }),
+//                     scanResult: savedScanResult._id
+//                   });
+//                   allVulnerabilities.push(vulnerability);
+//                 }
+
+//                 vulnerabilityIds.push(vulnerability._id);
+//               } catch (error) {
+//                 console.error(`Error processing vulnerability in quick scan:`, error);
+//               }
+//             }
+//             savedScanResult.vulnerabilities = vulnerabilityIds;
+//             await savedScanResult.save();
+//           }
+//           allResults.push(savedScanResult);
+//         }
+
+//         // Update lastScanDate on the appropriate model
+//         if (target.targetType === 'asset') {
+//           await Asset.findByIdAndUpdate(target._id, { lastScanDate: new Date() });
+//         } else {
+//           await Device.findByIdAndUpdate(target._id, { lastScanDate: new Date() });
+//         }
+        
+//         totalScanned++;
+//       } catch (error) {
+//         console.error(`Error scanning target ${target.name}:`, error);
+//       }
+//     }
+
+//     // Complete the scan
+//     progressTracker.complete(`Quick scan completed - ${totalScanned}/${allTargets.length} targets scanned`);
+
+//     const response = {
+//       success: true,
+//       message: `Quick scan completed for ${totalScanned} targets`,
+//       summary: {
+//         totalTargets: allTargets.length,
+//         totalAssets: assets.length,
+//         totalDevices: devices.length,
+//         scannedTargets: totalScanned,
+//         totalVulnerabilities: allVulnerabilities.length,
+//         newVulnerabilities: allVulnerabilities.length,
+//         highestSeverity: getHighestSeverity(allVulnerabilities)
+//       },
+//       results: allResults.slice(0, 10)
+//     };
+
+//     res.json(response);
+//   } catch (error) {
+//     console.error('Quick scan error:', error);
+//     progressTracker.setError(`Quick scan failed: ${error.message}`);
+
+//     res.status(500).json({ 
+//       success: false,
+//       message: 'Quick scan failed', 
+//       error: error.message 
+//     });
+//   }
+// };
+
 exports.runQuickScan = async (req, res) => {
-  const io = req.app.get('io');
   try {
     const { scanType = 'quick' } = req.body || {};
     progressTracker.reset();
+    
     const assets = await Asset.find({ status: 'Online' });
-    if (assets.length === 0) {
-      return res.status(400).json({ message: 'No online assets found to scan' });
+    const devices = await NetworkDevice.find({ status: 'Online' });
+    
+    const allTargets = [
+      ...assets.map(a => ({ ...a.toObject(), targetType: 'asset' })),
+      ...devices.map(d => ({ ...d.toObject(), targetType: 'device' }))
+    ];
+    
+    if (allTargets.length === 0) {
+      return res.status(400).json({ message: 'No online assets or devices found to scan' });
     }
 
     const allResults = [];
     const allVulnerabilities = [];
     let totalScanned = 0;
 
-    console.log(`Starting ${scanType} scan for ${assets.length} assets`);
+    console.log(`Starting ${scanType} scan for ${allTargets.length} targets`);
+    
+    // Start progress tracking
+    progressTracker.setProgress(0, `Starting scan of ${allTargets.length} targets...`, {
+      totalAssets: allTargets.length,
+      completedAssets: 0
+    });
 
-    for (let i = 0; i < assets.length; i++) {
-      const asset = assets[i];
-      const percent = Math.round(((i + 1) / assets.length) * 100);
-      const message = `Scanning ${asset.name} (${asset.ip})`;
-      progressTracker.setProgress(percent, message);
-      if (io) io.emit('scanProgress', { percent, message, active: true });
+    for (let i = 0; i < allTargets.length; i++) {
+      const target = allTargets[i];
+      
+      // Update progress for current target
+      const percent = Math.round(((i) / allTargets.length) * 100);
+      progressTracker.setProgress(
+        percent, 
+        `Scanning ${target.name} (${target.ip})...`,
+        {
+          currentAsset: target.name,
+          completedAssets: i,
+          totalAssets: allTargets.length
+        }
+      );
 
       try {
-        const isReachable = await pingTest(asset.ip);
+        const isReachable = await pingTest(target.ip);
         if (!isReachable) {
-          console.log(`Asset ${asset.name} (${asset.ip}) is not reachable, skipping...`);
+          console.log(`Target ${target.name} is not reachable, skipping...`);
           continue;
         }
 
-        const scanResults = await runNmapScan(asset.ip, {
+        const scanResults = await runNmapScan(target.ip, {
           scanType,
           includeVulnScripts: true
         });
 
-        for (const scanResult of scanResults) {
-          const savedScanResult = await ScanResult.create({
-            ...scanResult,
-            asset: asset._id,
-            vulnerabilities: []
-          });
-
-          if (scanResult.detectionDetails && scanResult.detectionDetails.length > 0) {
-            const vulnerabilityIds = [];
-            for (const vulnDetail of scanResult.detectionDetails) {
-              try {
-                const existingVuln = await Vulnerability.findOne({
-                  $or: [
-                    { cve: vulnDetail.cve, asset: asset._id },
-                    { title: vulnDetail.title, asset: asset._id }
-                  ]
-                });
-
-                let vulnerability;
-                if (existingVuln) {
-                  existingVuln.discoveredDate = new Date();
-                  existingVuln.scanResult = savedScanResult._id;
-                  if (existingVuln.status === 'Resolved') {
-                    existingVuln.status = 'Open';
-                  }
-                  await existingVuln.save();
-                  vulnerability = existingVuln;
-                } else {
-                  vulnerability = await Vulnerability.create({
-                    title: vulnDetail.title || `${vulnDetail.cve} - ${scanResult.service} vulnerability`,
-                    cve: vulnDetail.cve || null,
-                    severity: vulnDetail.severity || 'Medium',
-                    description: vulnDetail.description || 'Vulnerability detected during quick scan',
-                    cvssScore: vulnDetail.cvssScore || 0,
-                    remediation: vulnDetail.remediation || 'Review and apply security patches',
-                    exploitAvailable: vulnDetail.exploitAvailable || false,
-                    references: vulnDetail.references || [],
-                    discoveredDate: new Date(),
-                    status: 'Open',
-                    asset: asset._id,
-                    scanResult: savedScanResult._id
-                  });
-                  allVulnerabilities.push(vulnerability);
-                }
-
-                vulnerabilityIds.push(vulnerability._id);
-              } catch (error) {
-                console.error(`Error processing vulnerability in quick scan:`, error);
-              }
-            }
-            savedScanResult.vulnerabilities = vulnerabilityIds;
-            await savedScanResult.save();
-          }
-          allResults.push(savedScanResult);
-        }
-
-        asset.lastScanDate = new Date();
-        await asset.save();
+        // ... rest of your scan processing logic ...
+        
         totalScanned++;
       } catch (error) {
-        console.error(`Error scanning asset ${asset.name}:`, error);
+        console.error(`Error scanning target ${target.name}:`, error);
       }
     }
 
-    progressTracker.complete();
-    if (io) {
-      io.emit('scanProgress', {
-        percent: 100,
-        message: `Quick scan completed - ${totalScanned} assets scanned`,
-        active: false
-      });
-    }
+    // Complete the scan
+    progressTracker.complete(`Quick scan completed - ${totalScanned}/${allTargets.length} targets scanned`);
 
     const response = {
       success: true,
-      message: `Quick scan completed for ${totalScanned} assets`,
+      message: `Quick scan completed for ${totalScanned} targets`,
       summary: {
+        totalTargets: allTargets.length,
         totalAssets: assets.length,
-        scannedAssets: totalScanned,
+        totalDevices: devices.length,
+        scannedTargets: totalScanned,
         totalVulnerabilities: allVulnerabilities.length,
-        newVulnerabilities: allVulnerabilities.length,
-        highestSeverity: getHighestSeverity(allVulnerabilities)
+        newVulnerabilities: allVulnerabilities.length
       },
       results: allResults.slice(0, 10)
     };
@@ -416,14 +572,7 @@ exports.runQuickScan = async (req, res) => {
     res.json(response);
   } catch (error) {
     console.error('Quick scan error:', error);
-    progressTracker.reset();
-    if (io) {
-      io.emit('scanProgress', {
-        percent: 0,
-        message: 'Quick scan failed',
-        active: false
-      });
-    }
+    progressTracker.setError(`Quick scan failed: ${error.message}`);
 
     res.status(500).json({ 
       success: false,

@@ -30,7 +30,7 @@ const TopNavbar = () => {
             fontWeight: 'bold',
           }}
         >
-          VulnTracker
+        CAMTEL VulnTracker
         </Navbar.Brand>
 
         <Navbar.Toggle

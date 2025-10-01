@@ -10,6 +10,8 @@ import Select from 'react-select';
 import Papa from 'papaparse'; // For CSV Export
 import '../App.css'
 import config from '../config';
+import { useSocket } from '../context/SocketContext';
+import ScanProgressBar from '../components/ScanProgressBar';
 
 const assetTypes = ['Server', 'Database', 'Application', 'Network Device'];
 const serverStatuses = ['Online', 'Offline', 'Maintenance'];
@@ -32,6 +34,7 @@ const scanTypes = [
 const Servers = () => {
   const { token } = useContext(AuthContext);
 
+  const { isConnected, scanProgress, resetScanProgress } = useSocket(token);
   const [assets, setAssets] = useState([]);
   const [filteredAssets, setFilteredAssets] = useState([]);
   const [showModal, setShowModal] = useState(false);
@@ -77,9 +80,10 @@ const Servers = () => {
   const [scannedAssetName, setScannedAssetName] = useState('');
   const [scanningAssetId, setScanningAssetId] = useState(null);
   const [scanningAll, setScanningAll] = useState(false);
-  const [scanProgress, setScanProgress] = useState({ percent: 0, message: '', active: false });
+  // const [scanProgress, setScanProgress] = useState({ percent: 0, message: `Starting ${selectedScanType} scan for ${scannedAssetName}...`, active: false });
   const [connectivity, setConnectivity] = useState({});
   const [testingConnectivity, setTestingConnectivity] = useState(new Set());
+  // const scanProgress = socketScanProgress;
 
   // ... existing state variables ...
   const [searchTerm, setSearchTerm] = useState('');
@@ -238,7 +242,8 @@ const Servers = () => {
   setError('');
   setSuccess('');
   setScanResults([]);
-  setScanProgress({ percent: 0, message: `Starting ${scanType} scan for ${name}...`, active: true });
+  resetScanProgress();
+  // setScanProgress({ percent: 0, message: `Starting ${scanType} scan for ${name}...`, active: true });
 
   try {
     const res = await fetch(`${config.API_BASE_URL}/api/scan/asset`, {
@@ -294,7 +299,7 @@ const Servers = () => {
     setError('Scan failed due to server error.');
   } finally {
     setScanningAssetId(null);
-    setScanProgress({ percent: 100, message: 'Scan completed', active: false });
+    // setScanProgress({ percent: 100, message: 'Scan completed', active: false });
   }
 };
   // const startScan = async (asset, scanType = 'quick') => {
@@ -381,7 +386,10 @@ const Servers = () => {
     if (!confirmed) return;
 
     setScanningAll(true);
-    setScanProgress({ percent: 0, message: 'Initializing quick scan for all assets...', active: true });
+    setError('');
+    setSuccess('');
+    resetScanProgress(); // Reset progress before starting
+    // setScanProgress({ percent: 0, message: 'Initializing quick scan for all assets...', active: true });
 
     try {
       const res = await fetch(`${config.API_BASE_URL}/api/scan/quick`, {
@@ -402,9 +410,15 @@ const Servers = () => {
       setError('Quick scan failed due to server error.');
     } finally {
       setScanningAll(false);
-      setScanProgress({ percent: 100, message: 'Quick scan completed', active: false });
+      // setScanProgress({ percent: 100, message: 'Quick scan completed', active: false });
     }
   };
+
+  // useEffect(() => {
+  //   return () => {
+  //     resetScanProgress();
+  //   };
+  // }, [resetScanProgress]);
 
   // Batch scan for selected assets
   const batchScan = async (selectedAssetIds, scanType = 'quick') => {
@@ -417,7 +431,10 @@ const Servers = () => {
     if (!confirmed) return;
 
     setScanningAll(true);
-    setScanProgress({ percent: 0, message: `Starting batch ${scanType} scan...`, active: true });
+    setError('');
+    setSuccess('');
+    resetScanProgress();
+    // setScanProgress({ percent: 0, message: `Starting batch ${scanType} scan...`, active: true });
 
     try {
       const res = await fetch(`${config.API_BASE_URL}/api/scan/batch`, {
@@ -445,7 +462,7 @@ const Servers = () => {
       setError('Batch scan failed due to server error.');
     } finally {
       setScanningAll(false);
-      setScanProgress({ percent: 100, message: 'Batch scan completed', active: false });
+      // setScanProgress({ percent: 100, message: 'Batch scan completed', active: false });
     }
   };
 
@@ -584,6 +601,19 @@ const applyFilters = () => {
 
   return (
     <div className="container mt-4" style={{ backgroundColor: '#F1F8FD', minHeight: '100vh' }}>
+      {/* ADD THIS: Real-time Scan Progress Bar */}
+      {/* <ScanProgressBar 
+        scanProgress={scanProgress} 
+        show={scanProgress.active || scanProgress.percent > 0}
+      /> */}
+
+      {/* Socket Connection Status (optional - for debugging) */}
+      {/* {!isConnected && (
+        <Alert variant="warning" className="mb-3">
+          <small>⚠️ Real-time updates disconnected. Progress may not update live.</small>
+        </Alert>
+      )} */}
+
       {/* Header Section */}
       <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap">
         <h3 style={{ color: '#1594EA' }} className="d-flex align-items-center"><FaServer className="me-2" />Server Assets</h3>

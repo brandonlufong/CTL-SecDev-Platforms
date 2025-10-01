@@ -43,6 +43,7 @@ import {
 } from 'react-icons/fa';
 import config from '../config';
 import { io } from 'socket.io-client';
+import { useSocket } from '../context/SocketContext';
 
 ChartJS.register(ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
 
@@ -50,6 +51,10 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { token } = useContext(AuthContext);
 
+  const { isConnected, scanProgress, resetScanProgress } = useSocket(token);
+  const [scanningAll, setScanningAll] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const toVulnerabilities= ({severity, status}) => {
     let query = '';
     if (severity) query += `severity=${severity}`;
@@ -152,7 +157,11 @@ const Dashboard = () => {
     const confirmed = window.confirm('Run a quick scan for all assets?');
     if (!confirmed) return;
 
-    setLoadingScans(true);
+    setScanningAll(true);
+    setError('');
+    setSuccess('');
+    resetScanProgress(); 
+    // setLoadingScans(true);
     try {
       const res = await fetch(`${config.API_BASE_URL}/api/scan/quick`, {
         method: 'POST',
@@ -166,8 +175,9 @@ const Dashboard = () => {
       console.error(err);
       alert('Quick scan failed.');
     } finally {
-      setLoadingScans(false);
-      setProgress({ percent: 0, message: '', active: false });
+      // setLoadingScans(false);
+      setScanningAll(false);
+      // setProgress({ percent: 0, message: '', active: false });
     }
   };
 
@@ -257,21 +267,21 @@ const Dashboard = () => {
       <h3 style={{ color: '#1594EA' }} className="mb-4 d-flex align-items-center">
         <FaTachometerAlt className="me-2"/> Dashboard Overview
       </h3>
-
-    {loadingScans && progress.active && (
+      
+      {/* Scan Progress */}
+      {scanProgress.active && (
         <Card className="mb-4">
           <Card.Body>
-            <div className="mb-4">
-              <strong className="text-muted">{progress.message}</strong>
-              <ProgressBar
-                now={progress.percent}
-                label={`${progress.percent}%`}
-                animated
-                striped
-                variant="primary"
-                className="rounded-pill"
-              />
+            <div className="d-flex justify-content-between align-items-center mb-2">
+              <strong>Scan Progress</strong>
+              <Badge bg="info">{scanProgress.percent}%</Badge>
             </div>
+            <ProgressBar 
+              now={scanProgress.percent} 
+              animated={scanProgress.active}
+              variant={scanProgress.percent === 100 ? 'success' : 'info'}
+            />
+            <small className="text-muted mt-1 d-block">{scanProgress.message}</small>
           </Card.Body>
         </Card>
       )}
@@ -346,10 +356,10 @@ const Dashboard = () => {
                   }}
                   // variant="success"
                   onClick={handleQuickScan}
-                  disabled={loadingScans || progress.active}
+                  disabled={scanningAll || scanProgress.active}
                   className="d-flex align-items-center edit-btn"
                 >
-                  {loadingScans || progress.active ? (
+                  {scanningAll ? (
                     <>
                       <Spinner size="sm" animation="border" className="me-2" />
                       Scanning...

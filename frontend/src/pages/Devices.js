@@ -10,6 +10,8 @@ import Select from 'react-select';
 import Papa from 'papaparse'; // For CSV Export
 import '../App.css'
 import config from '../config';
+import { useSocket } from '../context/SocketContext';
+import ScanProgressBar from '../components/ScanProgressBar';
 
 const assetTypes = ['Server', 'Database', 'Application', 'Network Device'];
 const deviceCategories = ['Router', 'Switch', 'Hub', 'Modem', 'Bridge', 'Gateway', 'Access Point'];
@@ -33,6 +35,7 @@ const scanTypes = [
 const Devices = () => {
   const { token } = useContext(AuthContext);
 
+  const { isConnected, scanProgress, resetScanProgress } = useSocket(token);
   const [devices, setDevices] = useState([]);
   const [filteredDevices, setFilteredDevices] = useState([]);
   const [showModal, setShowModal] = useState(false);
@@ -78,7 +81,7 @@ const Devices = () => {
   const [scannedDeviceName, setScannedDeviceName] = useState('');
   const [scanningDeviceId, setScanningDeviceId] = useState(null);
   const [scanningAll, setScanningAll] = useState(false);
-  const [scanProgress, setScanProgress] = useState({ percent: 0, message: '', active: false });
+  // const [scanProgress, setScanProgress] = useState({ percent: 0, message: '', active: false });
   const [connectivity, setConnectivity] = useState({});
   const [testingConnectivity, setTestingConnectivity] = useState(new Set());
 
@@ -239,7 +242,8 @@ const Devices = () => {
   setError('');
   setSuccess('');
   setScanResults([]);
-  setScanProgress({ percent: 0, message: `Starting ${scanType} scan for ${name}...`, active: true });
+  resetScanProgress();
+  // setScanProgress({ percent: 0, message: `Starting ${scanType} scan for ${name}...`, active: true });
 
   try {
     const res = await fetch(`${config.API_BASE_URL}/api/scan/device`, {
@@ -295,7 +299,7 @@ const Devices = () => {
     setError('Scan failed due to server error.');
   } finally {
     setScanningDeviceId(null);
-    setScanProgress({ percent: 100, message: 'Scan completed', active: false });
+    // setScanProgress({ percent: 100, message: 'Scan completed', active: false });
   }
 };
   // const startScan = async (asset, scanType = 'quick') => {
@@ -382,7 +386,8 @@ const Devices = () => {
     if (!confirmed) return;
 
     setScanningAll(true);
-    setScanProgress({ percent: 0, message: 'Initializing quick scan for all devices...', active: true });
+    resetScanProgress();
+    // setScanProgress({ percent: 0, message: 'Initializing quick scan for all devices...', active: true });
 
     try {
       const res = await fetch(`${config.API_BASE_URL}/api/scan/quick`, {
@@ -403,7 +408,7 @@ const Devices = () => {
       setError('Quick scan failed due to server error.');
     } finally {
       setScanningAll(false);
-      setScanProgress({ percent: 100, message: 'Quick scan completed', active: false });
+      // setScanProgress({ percent: 100, message: 'Quick scan completed', active: false });
     }
   };
 
@@ -418,7 +423,8 @@ const Devices = () => {
     if (!confirmed) return;
 
     setScanningAll(true);
-    setScanProgress({ percent: 0, message: `Starting batch ${scanType} scan...`, active: true });
+    resetScanProgress();
+    // setScanProgress({ percent: 0, message: `Starting batch ${scanType} scan...`, active: true });
 
     try {
       const res = await fetch(`${config.API_BASE_URL}/api/scan/batch`, {
@@ -446,7 +452,7 @@ const Devices = () => {
       setError('Batch scan failed due to server error.');
     } finally {
       setScanningAll(false);
-      setScanProgress({ percent: 100, message: 'Batch scan completed', active: false });
+      // setScanProgress({ percent: 100, message: 'Batch scan completed', active: false });
     }
   };
 

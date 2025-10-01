@@ -20,7 +20,7 @@ const Footer = () => {
       <Container>
         <Row className="align-items-center">
           <Col md={6} className="text-center text-md-start mb-2 mb-md-0">
-            &copy; {currentYear} Camtel. All rights reserved.
+            &copy; {currentYear} Camtel. All rights reserved. | Powered by SOC Platforms Security.
           </Col>
           <Col md={6} className="text-center text-md-end">
             <a href="/privacy" style={{ color: '#fff', marginRight: '15px', textDecoration: 'none' }}>Privacy Policy</a>

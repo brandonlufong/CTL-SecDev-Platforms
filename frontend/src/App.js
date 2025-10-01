@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-
+import { SocketProvider } from './context/SocketContext'; // Add this
+import GlobalScanProgress from './components/GlobalScanProgress'; // Add this
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
@@ -40,67 +41,69 @@ const App = () => {
 
   return (
     <AuthContext.Provider value={{ auth, setAuth }}>
-      <BrowserRouter>
-        <Navbar />
-        <Layout>
-          {/* Define routes */}
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
+      <SocketProvider>
+        <BrowserRouter>
+          <Navbar />
+          <Layout>
+            {/* Define routes */}
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Signup />} />
 
-            <Route
-              path="/"
-              element={
-                <PrivateRoute>
-                  <Dashboard />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/vulnerabilities/*"
-              element={
-                <PrivateRoute>
-                  <Vulnerabilities />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/servers/*"
-              element={
-                <PrivateRoute>
-                  <Servers />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/devices/*"
-              element={
-                <PrivateRoute>
-                  <Devices />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/profile"
-              element={
-                <PrivateRoute>
-                  <Profile />
-                </PrivateRoute>
-              }
-            />
-            <Route
-              path="/settings"
-              element={
-                <PrivateRoute>
-                  <Settings />
-                </PrivateRoute>
-              }
-            />
+              <Route
+                path="/"
+                element={
+                  <PrivateRoute>
+                    <Dashboard />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/vulnerabilities/*"
+                element={
+                  <PrivateRoute>
+                    <Vulnerabilities />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/servers/*"
+                element={
+                  <PrivateRoute>
+                    <Servers />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/devices/*"
+                element={
+                  <PrivateRoute>
+                    <Devices />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/profile"
+                element={
+                  <PrivateRoute>
+                    <Profile />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <PrivateRoute>
+                    <Settings />
+                  </PrivateRoute>
+                }
+              />
 
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Layout>
-      </BrowserRouter>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Layout>
+        </BrowserRouter>
+      </SocketProvider>
     </AuthContext.Provider>
   );
 };
