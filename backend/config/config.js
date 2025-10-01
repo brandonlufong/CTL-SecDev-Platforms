@@ -6,14 +6,14 @@ require('dotenv').config();
 const config = {
   // Server Configuration
   server: {
-    port: process.env.PORT || 5001,
-    host: process.env.HOST || 'localhost',
+    port: process.env.PORT || 5002,
+    host: process.env.HOST || '172.20.19.172',
     nodeEnv: process.env.NODE_ENV || 'development',
   },
 
   // Database Configuration
   database: {
-    uri: process.env.MONGO_URI || 'mongodb://localhost:27017/vulnmanager',
+    uri: process.env.MONGO_URI || 'mongodb://172.20.19.172:27017/vulnmanager',
   },
 
   // JWT Configuration
