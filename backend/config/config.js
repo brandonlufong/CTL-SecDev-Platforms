@@ -13,7 +13,7 @@ const config = {
 
   // Database Configuration
   database: {
-    uri: process.env.MONGO_URI || 'mongodb://172.20.19.172:27017/vulnmanager',
+    uri: process.env.MONGO_URI || 'mongodb://localhost:27017/vulnmanager',
   },
 
   // JWT Configuration
