@@ -12,6 +12,10 @@ import '../App.css'
 import config from '../config';
 import { useSocket } from '../context/SocketContext';
 import ScanProgressBar from '../components/ScanProgressBar';
+import { useScan } from '../context/ScanContext'; // Add this
+import { useConnectivity } from '../hooks/useConnectivity';
+
+
 
 const assetTypes = ['Server', 'Database', 'Application', 'Network Device'];
 const serverStatuses = ['Online', 'Offline', 'Maintenance'];
@@ -35,6 +39,24 @@ const Servers = () => {
   const { token } = useContext(AuthContext);
 
   const { isConnected, scanProgress, resetScanProgress } = useSocket(token);
+
+    // Use scan context instead of local state
+  const {
+    scanningTargetId,
+    scanningAll,
+    startScan,
+    scanAllTargets,
+    batchScan,
+    showScanOptions,
+    addNotification,
+  } = useScan();
+
+  const {
+    connectivity,
+    testConnectivity,
+    isTestingConnectivity
+  } = useConnectivity();
+
   const [assets, setAssets] = useState([]);
   const [filteredAssets, setFilteredAssets] = useState([]);
   const [showModal, setShowModal] = useState(false);
@@ -67,22 +89,22 @@ const Servers = () => {
   });
 
   // Enhanced scan state
-  const [scanResults, setScanResults] = useState([]);
+  // const [scanResults, setScanResults] = useState([]);
   const [vulns, setVulns] = useState([]);
   const [sortField, setSortField] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [serverTypeFilter, setServerTypeFilter] = useState('');
-  const [showScanModal, setShowScanModal] = useState(false);
-  const [showScanOptionsModal, setShowScanOptionsModal] = useState(false);
-  const [selectedAssetForScan, setSelectedAssetForScan] = useState(null);
-  const [selectedScanType, setSelectedScanType] = useState('quick');
-  const [scannedAssetName, setScannedAssetName] = useState('');
-  const [scanningAssetId, setScanningAssetId] = useState(null);
-  const [scanningAll, setScanningAll] = useState(false);
+  // const [showScanModal, setShowScanModal] = useState(false);
+  // const [showScanOptionsModal, setShowScanOptionsModal] = useState(false);
+  // const [selectedAssetForScan, setSelectedAssetForScan] = useState(null);
+  // const [selectedScanType, setSelectedScanType] = useState('quick');
+  // const [scannedAssetName, setScannedAssetName] = useState('');
+  // const [scanningAssetId, setScanningAssetId] = useState(null);
+  // const [scanningAll, setScanningAll] = useState(false);
   // const [scanProgress, setScanProgress] = useState({ percent: 0, message: `Starting ${selectedScanType} scan for ${scannedAssetName}...`, active: false });
-  const [connectivity, setConnectivity] = useState({});
-  const [testingConnectivity, setTestingConnectivity] = useState(new Set());
+  // const [connectivity, setConnectivity] = useState({});
+  // const [testingConnectivity, setTestingConnectivity] = useState(new Set());
   // const scanProgress = socketScanProgress;
 
   // ... existing state variables ...
@@ -95,6 +117,33 @@ const Servers = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [vulnCountMap, setVulnCountMap] = useState({}); // new
+
+    // Simplified scan function - uses context
+  const handleScan = (asset) => {
+    startScan(asset, 'quick');
+  };
+
+    // Simplified scan all - uses context
+  const handleScanAll = async () => {
+    const confirmed = window.confirm('Run quick scan for all online assets?');
+    if (!confirmed) return; 
+    await scanAllTargets();
+  };
+
+    // Simplified connectivity test
+  // const handleTestConnectivity = async (asset) => {
+  //   const result = await testConnectivity(asset);
+  //   if (result.success) {
+  //     // Update local connectivity state if needed
+  //     setConnectivity(prev => ({
+  //       ...prev,
+  //       [asset._id]: { 
+  //         reachable: result.reachable, 
+  //         testedAt: result.testedAt 
+  //       }
+  //     }));
+  //   }
+  // };
 
   const openCreateModal = () => {
     setForm({
@@ -181,8 +230,14 @@ const Servers = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      setAssets(data);
-      setFilteredAssets(data);
+
+    const normalizedData = data.map(asset => ({
+      ...asset,
+      targetType: 'asset'
+    }));
+
+      setAssets(normalizedData);
+      setFilteredAssets(normalizedData);
     } catch (err) {
       console.error('Failed to fetch assets', err);
       setError('Failed to load assets');
@@ -236,72 +291,72 @@ const Servers = () => {
   }, [token]);
 
   // Enhanced single asset scan with options
-  const startScan = async (asset, scanType = 'quick') => {
-  const { _id, name } = asset;
-  setScanningAssetId(_id);
-  setError('');
-  setSuccess('');
-  setScanResults([]);
-  resetScanProgress();
-  // setScanProgress({ percent: 0, message: `Starting ${scanType} scan for ${name}...`, active: true });
+//   const startScan = async (asset, scanType = 'quick') => {
+//   const { _id, name } = asset;
+//   setScanningAssetId(_id);
+//   setError('');
+//   setSuccess('');
+//   setScanResults([]);
+//   resetScanProgress();
+//   // setScanProgress({ percent: 0, message: `Starting ${scanType} scan for ${name}...`, active: true });
 
-  try {
-    const res = await fetch(`${config.API_BASE_URL}/api/scan/asset`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ assetId: _id, scanType }),
-    });
+//   try {
+//     const res = await fetch(`${config.API_BASE_URL}/api/scan/asset`, {
+//       method: 'POST',
+//       headers: {
+//         'Content-Type': 'application/json',
+//         Authorization: `Bearer ${token}`,
+//       },
+//       body: JSON.stringify({ assetId: _id, scanType }),
+//     });
 
-    const data = await res.json();
+//     const data = await res.json();
 
-    if (data.success) {
-      setScannedAssetName(name);
+//     if (data.success) {
+//       setScannedAssetName(name);
       
-      // CRITICAL: Ensure all scan results are properly formatted
-      const formattedResults = (data.scanResults || []).map(result => ({
-        ...result,
-        // Ensure vulnerabilities is always an array
-        vulnerabilities: Array.isArray(result.vulnerabilities) ? 
-          result.vulnerabilities.map(vuln => {
-            // If vulnerability is already a string, keep it
-            if (typeof vuln === 'string') return vuln;
+//       // CRITICAL: Ensure all scan results are properly formatted
+//       const formattedResults = (data.scanResults || []).map(result => ({
+//         ...result,
+//         // Ensure vulnerabilities is always an array
+//         vulnerabilities: Array.isArray(result.vulnerabilities) ? 
+//           result.vulnerabilities.map(vuln => {
+//             // If vulnerability is already a string, keep it
+//             if (typeof vuln === 'string') return vuln;
             
-            // If it's an object, ensure we have string representations
-            if (typeof vuln === 'object' && vuln !== null) {
-              return {
-                ...vuln,
-                title: String(vuln.title || vuln.cve || vuln.name || 'Unknown'),
-                severity: String(vuln.severity || 'Unknown'),
-                cve: String(vuln.cve || ''),
-                cvssScore: vuln.cvssScore ? Number(vuln.cvssScore) : 0
-              };
-            }
+//             // If it's an object, ensure we have string representations
+//             if (typeof vuln === 'object' && vuln !== null) {
+//               return {
+//                 ...vuln,
+//                 title: String(vuln.title || vuln.cve || vuln.name || 'Unknown'),
+//                 severity: String(vuln.severity || 'Unknown'),
+//                 cve: String(vuln.cve || ''),
+//                 cvssScore: vuln.cvssScore ? Number(vuln.cvssScore) : 0
+//               };
+//             }
             
-            return 'Unknown Vulnerability';
-          }) : []
-      }));
+//             return 'Unknown Vulnerability';
+//           }) : []
+//       }));
       
-      setScanResults(formattedResults);
-      setSuccess(`${scanType.charAt(0).toUpperCase() + scanType.slice(1)} scan completed successfully. Found ${data.newVulnerabilities || 0} new vulnerabilities.`);
-      setShowScanModal(true);
+//       setScanResults(formattedResults);
+//       setSuccess(`${scanType.charAt(0).toUpperCase() + scanType.slice(1)} scan completed successfully. Found ${data.newVulnerabilities || 0} new vulnerabilities.`);
+//       setShowScanModal(true);
       
-      // Refresh both assets and vulnerabilities
-      fetchAssets();
-      fetchVulnerabilities();
-    } else {
-      setError(data.message || 'Scan failed');
-    }
-  } catch (err) {
-    console.error('Scan failed', err);
-    setError('Scan failed due to server error.');
-  } finally {
-    setScanningAssetId(null);
-    // setScanProgress({ percent: 100, message: 'Scan completed', active: false });
-  }
-};
+//       // Refresh both assets and vulnerabilities
+//       fetchAssets();
+//       fetchVulnerabilities();
+//     } else {
+//       setError(data.message || 'Scan failed');
+//     }
+//   } catch (err) {
+//     console.error('Scan failed', err);
+//     setError('Scan failed due to server error.');
+//   } finally {
+//     setScanningAssetId(null);
+//     // setScanProgress({ percent: 100, message: 'Scan completed', active: false });
+//   }
+// };
   // const startScan = async (asset, scanType = 'quick') => {
   //   const { _id, name } = asset;
   //   setScanningAssetId(_id);
@@ -349,70 +404,70 @@ const Servers = () => {
   // };
 
   // Test asset connectivity
-  const testConnectivity = async (asset) => {
-    const { _id } = asset;
-    setTestingConnectivity(prev => new Set([...prev, _id]));
+  // const testConnectivity = async (asset) => {
+  //   const { _id } = asset;
+  //   setTestingConnectivity(prev => new Set([...prev, _id]));
 
-    try {
-      const res = await fetch(`${config.API_BASE_URL}/api/scan/test/${_id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
+  //   try {
+  //     const res = await fetch(`${config.API_BASE_URL}/api/scan/test/${_id}`, {
+  //       headers: { Authorization: `Bearer ${token}` },
+  //     });
+  //     const data = await res.json();
 
-      if (data.success) {
-        setConnectivity(prev => ({
-          ...prev,
-          [_id]: { reachable: data.reachable, testedAt: data.testedAt }
-        }));
-      }
-    } catch (err) {
-      console.error('Connectivity test failed', err);
-      setConnectivity(prev => ({
-        ...prev,
-        [_id]: { reachable: false, testedAt: new Date() }
-      }));
-    } finally {
-      setTestingConnectivity(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(_id);
-        return newSet;
-      });
-    }
-  };
+  //     if (data.success) {
+  //       setConnectivity(prev => ({
+  //         ...prev,
+  //         [_id]: { reachable: data.reachable, testedAt: data.testedAt }
+  //       }));
+  //     }
+  //   } catch (err) {
+  //     console.error('Connectivity test failed', err);
+  //     setConnectivity(prev => ({
+  //       ...prev,
+  //       [_id]: { reachable: false, testedAt: new Date() }
+  //     }));
+  //   } finally {
+  //     setTestingConnectivity(prev => {
+  //       const newSet = new Set(prev);
+  //       newSet.delete(_id);
+  //       return newSet;
+  //     });
+  //   }
+  // };
 
   // Enhanced quick scan for all assets
-  const scanAllAssets = async () => {
-    const confirmed = window.confirm('Run quick scan for all online assets? This may take several minutes.');
-    if (!confirmed) return;
+  // const scanAllAssets = async () => {
+  //   const confirmed = window.confirm('Run quick scan for all online assets? This may take several minutes.');
+  //   if (!confirmed) return;
 
-    setScanningAll(true);
-    setError('');
-    setSuccess('');
-    resetScanProgress(); // Reset progress before starting
-    // setScanProgress({ percent: 0, message: 'Initializing quick scan for all assets...', active: true });
+  //   setScanningAll(true);
+  //   setError('');
+  //   setSuccess('');
+  //   resetScanProgress(); // Reset progress before starting
+  //   // setScanProgress({ percent: 0, message: 'Initializing quick scan for all assets...', active: true });
 
-    try {
-      const res = await fetch(`${config.API_BASE_URL}/api/scan/quick`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
+  //   try {
+  //     const res = await fetch(`${config.API_BASE_URL}/api/scan/quick`, {
+  //       method: 'POST',
+  //       headers: { Authorization: `Bearer ${token}` },
+  //     });
 
-      const data = await res.json();
+  //     const data = await res.json();
 
-      if (data.success) {
-        setSuccess(`Quick scan completed! Scanned ${data.summary.scannedAssets} assets and found ${data.summary.totalVulnerabilities} vulnerabilities.`);
-        fetchAssets(); // Refresh to show updated scan dates
-      } else {
-        setError(data.message || 'Quick scan failed');
-      }
-    } catch (err) {
-      console.error('Quick scan failed', err);
-      setError('Quick scan failed due to server error.');
-    } finally {
-      setScanningAll(false);
-      // setScanProgress({ percent: 100, message: 'Quick scan completed', active: false });
-    }
-  };
+  //     if (data.success) {
+  //       setSuccess(`Quick scan completed! Scanned ${data.summary.scannedAssets} assets and found ${data.summary.totalVulnerabilities} vulnerabilities.`);
+  //       fetchAssets(); // Refresh to show updated scan dates
+  //     } else {
+  //       setError(data.message || 'Quick scan failed');
+  //     }
+  //   } catch (err) {
+  //     console.error('Quick scan failed', err);
+  //     setError('Quick scan failed due to server error.');
+  //   } finally {
+  //     setScanningAll(false);
+  //     // setScanProgress({ percent: 100, message: 'Quick scan completed', active: false });
+  //   }
+  // };
 
   // useEffect(() => {
   //   return () => {
@@ -421,64 +476,64 @@ const Servers = () => {
   // }, [resetScanProgress]);
 
   // Batch scan for selected assets
-  const batchScan = async (selectedAssetIds, scanType = 'quick') => {
-    if (selectedAssetIds.length === 0) {
-      setError('Please select assets to scan');
-      return;
-    }
+  // const batchScan = async (selectedAssetIds, scanType = 'quick') => {
+  //   if (selectedAssetIds.length === 0) {
+  //     setError('Please select assets to scan');
+  //     return;
+  //   }
 
-    const confirmed = window.confirm(`Run ${scanType} scan for ${selectedAssetIds.length} selected assets?`);
-    if (!confirmed) return;
+  //   const confirmed = window.confirm(`Run ${scanType} scan for ${selectedAssetIds.length} selected assets?`);
+  //   if (!confirmed) return;
 
-    setScanningAll(true);
-    setError('');
-    setSuccess('');
-    resetScanProgress();
-    // setScanProgress({ percent: 0, message: `Starting batch ${scanType} scan...`, active: true });
+  //   setScanningAll(true);
+  //   setError('');
+  //   setSuccess('');
+  //   resetScanProgress();
+  //   // setScanProgress({ percent: 0, message: `Starting batch ${scanType} scan...`, active: true });
 
-    try {
-      const res = await fetch(`${config.API_BASE_URL}/api/scan/batch`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ assetIds: selectedAssetIds, scanType }),
-      });
+  //   try {
+  //     const res = await fetch(`${config.API_BASE_URL}/api/scan/batch`, {
+  //       method: 'POST',
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //         Authorization: `Bearer ${token}`,
+  //       },
+  //       body: JSON.stringify({ assetIds: selectedAssetIds, scanType }),
+  //     });
 
-      const data = await res.json();
+  //     const data = await res.json();
 
-      if (data.success) {
-        setSuccess(`Batch scan completed! Successfully scanned ${data.summary.successfulScans} assets.`);
-        if (data.summary.failedScans > 0) {
-          setError(`${data.summary.failedScans} assets failed to scan.`);
-        }
-        fetchAssets();
-      } else {
-        setError(data.message || 'Batch scan failed');
-      }
-    } catch (err) {
-      console.error('Batch scan failed', err);
-      setError('Batch scan failed due to server error.');
-    } finally {
-      setScanningAll(false);
-      // setScanProgress({ percent: 100, message: 'Batch scan completed', active: false });
-    }
-  };
+  //     if (data.success) {
+  //       setSuccess(`Batch scan completed! Successfully scanned ${data.summary.successfulScans} assets.`);
+  //       if (data.summary.failedScans > 0) {
+  //         setError(`${data.summary.failedScans} assets failed to scan.`);
+  //       }
+  //       fetchAssets();
+  //     } else {
+  //       setError(data.message || 'Batch scan failed');
+  //     }
+  //   } catch (err) {
+  //     console.error('Batch scan failed', err);
+  //     setError('Batch scan failed due to server error.');
+  //   } finally {
+  //     setScanningAll(false);
+  //     // setScanProgress({ percent: 100, message: 'Batch scan completed', active: false });
+  //   }
+  // };
 
   // Show scan options modal
-  const showScanOptions = (asset) => {
-    setSelectedAssetForScan(asset);
-    setShowScanOptionsModal(true);
-  };
+  // const showScanOptions = (asset) => {
+  //   setSelectedAssetForScan(asset);
+  //   setShowScanOptionsModal(true);
+  // };
 
   // Execute scan with selected options
-  const executeScan = () => {
-    if (selectedAssetForScan) {
-      startScan(selectedAssetForScan, selectedScanType);
-      setShowScanOptionsModal(false);
-    }
-  };
+  // const executeScan = () => {
+  //   if (selectedAssetForScan) {
+  //     startScan(selectedAssetForScan, selectedScanType);
+  //     setShowScanOptionsModal(false);
+  //   }
+  // };
 
   // Get risk level badge
   const getRiskBadge = (riskLevel) => {
@@ -494,7 +549,7 @@ const Servers = () => {
   // Get connectivity status badge
   const getConnectivityBadge = (asset) => {
     const conn = connectivity[asset._id];
-    const isTesting = testingConnectivity.has(asset._id);
+    const isTesting = isTestingConnectivity(asset._id);
 
     if (isTesting) {
       return <Spinner size="sm" animation="border" />;
@@ -624,7 +679,7 @@ const applyFilters = () => {
             </Button>
             <Button 
               variant="success" 
-              onClick={scanAllAssets}
+              onClick={handleScanAll}
               disabled={scanningAll || scanProgress.active}
             >
               {scanningAll ? (
@@ -639,6 +694,18 @@ const applyFilters = () => {
             </Button>
           </ButtonGroup>
         </div>
+      </div>
+
+      <div className="mb-3">
+        <Badge bg={isConnected ? 'success' : 'danger'}>
+          {isConnected ? '● Connected' : '● Disconnected'}
+        </Badge>
+        {scanProgress.active && (
+          <Badge bg="info" className="ms-2">
+            <FaSyncAlt className="spin me-1" />
+            Scan in Progress
+          </Badge>
+        )}
       </div>
 
       {/* Alert Messages */}
@@ -801,9 +868,9 @@ const applyFilters = () => {
                         className="d-flex align-items-center gap-1 edit-btn"
                         variant="outline-primary"
                         onClick={() => showScanOptions(asset)}
-                        disabled={scanningAssetId === asset._id || scanProgress.active}
+                        disabled={scanningTargetId === asset._id || scanProgress.active}
                       >
-                        {scanningAssetId === asset._id ? (
+                        {scanningTargetId === asset._id ? (
                           <>
                             <Spinner size="sm" animation="border" /> Scanning...
                           </>
@@ -855,7 +922,7 @@ const applyFilters = () => {
       </Card>
 
       {/* Scan Options Modal */}
-      <Modal show={showScanOptionsModal} onHide={() => setShowScanOptionsModal(false)}>
+      {/* <Modal show={showScanOptionsModal} onHide={() => setShowScanOptionsModal(false)}>
         <Modal.Header closeButton>
           <Modal.Title>
             <FaBug className="me-2" />
@@ -895,10 +962,10 @@ const applyFilters = () => {
             Start {scanTypes.find(t => t.value === selectedScanType)?.label}
           </Button>
         </Modal.Footer>
-      </Modal>
+      </Modal> */}
 
       {/* Enhanced Scan Results Modal */}
-      <Modal show={showScanModal} onHide={() => setShowScanModal(false)} size="xl">
+      {/* <Modal show={showScanModal} onHide={() => setShowScanModal(false)} size="xl">
         <Modal.Header closeButton>
           <Modal.Title>
             <FaShieldAlt className="me-2" />
@@ -969,10 +1036,10 @@ const applyFilters = () => {
                     </tr>
                   ))}
                 </tbody>
-              </Table>
+              </Table> */}
 
               {/* Vulnerability Details */}
-              {scanResults.some(r => r.vulnerabilities && Array.isArray(r.vulnerabilities) && r.vulnerabilities.length > 0) && (
+              {/* {scanResults.some(r => r.vulnerabilities && Array.isArray(r.vulnerabilities) && r.vulnerabilities.length > 0) && (
                 <div className="mt-4">
                   <h5><FaExclamationTriangle className="me-2 text-warning" />Detected Vulnerabilities</h5>
                   {scanResults
@@ -1022,7 +1089,7 @@ const applyFilters = () => {
             View All Vulnerabilities
           </Button>
         </Modal.Footer>
-      </Modal>
+      </Modal> */}
 
       {/* Create/Edit Modal */}
       <Modal show={showModal} onHide={() => setShowModal(false)} size="lg">

@@ -14,6 +14,11 @@ import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import Layout from './components/Layout';
 import PrivateRoute from './components/PrivateRoute';
+import { ScanProvider } from './context/ScanContext'; // Add this
+import GlobalNotifications from './components/GlobalNotifications'; // Add this
+import GlobalScanResultModal from './components/GlobalScanResultModal'; // Add this
+import GlobalScanOptionsModal from './components/GlobalScanOptionsModal'; // Add this
+import ScanHistorySidebar from './components/ScanHistorySidebar'; // Add this
 
 // Auth context to store user info and token
 export const AuthContext = createContext();
@@ -43,65 +48,72 @@ const App = () => {
     <AuthContext.Provider value={{ auth, setAuth }}>
       <SocketProvider>
         <BrowserRouter>
-          <Navbar />
-          <Layout>
-            {/* Define routes */}
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/signup" element={<Signup />} />
+          <ScanProvider>
+            <Navbar />
+            <Layout>
+              {/* Define routes */}
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/signup" element={<Signup />} />
 
-              <Route
-                path="/"
-                element={
-                  <PrivateRoute>
-                    <Dashboard />
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/vulnerabilities/*"
-                element={
-                  <PrivateRoute>
-                    <Vulnerabilities />
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/servers/*"
-                element={
-                  <PrivateRoute>
-                    <Servers />
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/devices/*"
-                element={
-                  <PrivateRoute>
-                    <Devices />
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/profile"
-                element={
-                  <PrivateRoute>
-                    <Profile />
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/settings"
-                element={
-                  <PrivateRoute>
-                    <Settings />
-                  </PrivateRoute>
-                }
-              />
+                <Route
+                  path="/"
+                  element={
+                    <PrivateRoute>
+                      <Dashboard />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/vulnerabilities/*"
+                  element={
+                    <PrivateRoute>
+                      <Vulnerabilities />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/servers/*"
+                  element={
+                    <PrivateRoute>
+                      <Servers />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/devices/*"
+                  element={
+                    <PrivateRoute>
+                      <Devices />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/profile"
+                  element={
+                    <PrivateRoute>
+                      <Profile />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/settings"
+                  element={
+                    <PrivateRoute>
+                      <Settings />
+                    </PrivateRoute>
+                  }
+                />
 
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Layout>
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Layout>
+            <GlobalScanProgress />
+            <GlobalNotifications />
+            <GlobalScanResultModal />
+            <GlobalScanOptionsModal />
+            <ScanHistorySidebar />
+          </ScanProvider>
         </BrowserRouter>
       </SocketProvider>
     </AuthContext.Provider>
