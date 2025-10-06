@@ -488,9 +488,107 @@ exports.scanDevice = async (req, res) => {
 //   }
 // };
 
+// exports.runQuickScan = async (req, res) => {
+//   try {
+//     const { scanType = 'quick' } = req.body || {};
+//     progressTracker.reset();
+    
+//     const assets = await Asset.find({ status: 'Online' });
+//     const devices = await NetworkDevice.find({ status: 'Online' });
+    
+//     const allTargets = [
+//       ...assets.map(a => ({ ...a.toObject(), targetType: 'asset' })),
+//       ...devices.map(d => ({ ...d.toObject(), targetType: 'device' }))
+//     ];
+    
+//     if (allTargets.length === 0) {
+//       return res.status(400).json({ message: 'No online assets or devices found to scan' });
+//     }
+
+//     const allResults = [];
+//     const allVulnerabilities = [];
+//     let totalScanned = 0;
+
+//     console.log(`Starting ${scanType} scan for ${allTargets.length} targets`);
+    
+//     // Start progress tracking
+//     progressTracker.setProgress(0, `Starting scan of ${allTargets.length} targets...`, {
+//       totalAssets: allTargets.length,
+//       completedAssets: 0
+//     });
+
+//     for (let i = 0; i < allTargets.length; i++) {
+//       const target = allTargets[i];
+      
+//       // Update progress for current target
+//       const percent = Math.round(((i) / allTargets.length) * 100);
+//       progressTracker.setProgress(
+//         percent, 
+//         `Scanning ${target.name} (${target.ip})...`,
+//         {
+//           currentAsset: target.name,
+//           completedAssets: i,
+//           totalAssets: allTargets.length
+//         }
+//       );
+
+//       try {
+//         const isReachable = await pingTest(target.ip);
+//         if (!isReachable) {
+//           console.log(`Target ${target.name} is not reachable, skipping...`);
+//           continue;
+//         }
+
+//         const scanResults = await runNmapScan(target.ip, {
+//           scanType,
+//           includeVulnScripts: true
+//         });
+
+//         // ... rest of your scan processing logic ...
+        
+//         totalScanned++;
+//       } catch (error) {
+//         console.error(`Error scanning target ${target.name}:`, error);
+//       }
+//     }
+
+//     // Complete the scan
+//     progressTracker.complete(`Quick scan completed - ${totalScanned}/${allTargets.length} targets scanned`);
+
+//     const response = {
+//       success: true,
+//       message: `Quick scan completed for ${totalScanned} targets`,
+//       summary: {
+//         totalTargets: allTargets.length,
+//         totalAssets: assets.length,
+//         totalDevices: devices.length,
+//         scannedTargets: totalScanned,
+//         totalVulnerabilities: allVulnerabilities.length,
+//         newVulnerabilities: allVulnerabilities.length
+//       },
+//       results: allResults.slice(0, 10)
+//     };
+
+//     res.json(response);
+//   } catch (error) {
+//     console.error('Quick scan error:', error);
+//     progressTracker.setError(`Quick scan failed: ${error.message}`);
+
+//     res.status(500).json({ 
+//       success: false,
+//       message: 'Quick scan failed', 
+//       error: error.message 
+//     });
+//   }
+// };
+
+// Replace your runQuickScan function with this updated version
+
 exports.runQuickScan = async (req, res) => {
   try {
     const { scanType = 'quick' } = req.body || {};
+    
+    // Reset progress tracker
     progressTracker.reset();
     
     const assets = await Asset.find({ status: 'Online' });
@@ -502,81 +600,182 @@ exports.runQuickScan = async (req, res) => {
     ];
     
     if (allTargets.length === 0) {
-      return res.status(400).json({ message: 'No online assets or devices found to scan' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'No online assets or devices found to scan' 
+      });
     }
-
-    const allResults = [];
-    const allVulnerabilities = [];
-    let totalScanned = 0;
 
     console.log(`Starting ${scanType} scan for ${allTargets.length} targets`);
     
-    // Start progress tracking
-    progressTracker.setProgress(0, `Starting scan of ${allTargets.length} targets...`, {
-      totalAssets: allTargets.length,
-      completedAssets: 0
+    // Send immediate response that scan has started
+    res.json({
+      success: true,
+      status: 'started',
+      message: `Quick scan initiated for ${allTargets.length} targets. Progress will be sent via websocket.`,
+      summary: {
+        totalTargets: allTargets.length,
+        totalAssets: assets.length,
+        totalDevices: devices.length
+      }
     });
 
-    for (let i = 0; i < allTargets.length; i++) {
-      const target = allTargets[i];
-      
-      // Update progress for current target
-      const percent = Math.round(((i) / allTargets.length) * 100);
-      progressTracker.setProgress(
-        percent, 
-        `Scanning ${target.name} (${target.ip})...`,
-        {
-          currentAsset: target.name,
-          completedAssets: i,
-          totalAssets: allTargets.length
-        }
-      );
+    // Continue scanning asynchronously
+    (async () => {
+      const allResults = [];
+      const allVulnerabilities = [];
+      let totalScanned = 0;
 
-      try {
-        const isReachable = await pingTest(target.ip);
-        if (!isReachable) {
-          console.log(`Target ${target.name} is not reachable, skipping...`);
-          continue;
-        }
+      // Start progress tracking
+      progressTracker.setProgress(0, `Starting scan of ${allTargets.length} targets...`, {
+        totalAssets: allTargets.length,
+        completedAssets: 0
+      });
 
-        const scanResults = await runNmapScan(target.ip, {
-          scanType,
-          includeVulnScripts: true
-        });
-
-        // ... rest of your scan processing logic ...
+      for (let i = 0; i < allTargets.length; i++) {
+        const target = allTargets[i];
         
-        totalScanned++;
-      } catch (error) {
-        console.error(`Error scanning target ${target.name}:`, error);
+        // Update progress for current target
+        const percent = Math.round(((i) / allTargets.length) * 100);
+        progressTracker.setProgress(
+          percent, 
+          `Scanning ${target.name} (${target.ip})...`,
+          {
+            currentAsset: target.name,
+            completedAssets: i,
+            totalAssets: allTargets.length
+          }
+        );
+
+        try {
+          const isReachable = await pingTest(target.ip);
+          if (!isReachable) {
+            console.log(`Target ${target.name} is not reachable, skipping...`);
+            continue;
+          }
+
+          const scanResults = await runNmapScan(target.ip, {
+            scanType,
+            includeVulnScripts: true
+          });
+
+          // Process scan results
+          for (const scanResult of scanResults) {
+            const targetRef = target.targetType === 'asset' 
+              ? { asset: target._id } 
+              : { device: target._id };
+              
+            const savedScanResult = await ScanResult.create({
+              ...scanResult,
+              ...targetRef,
+              vulnerabilities: []
+            });
+
+            if (scanResult.detectionDetails && scanResult.detectionDetails.length > 0) {
+              const vulnerabilityIds = [];
+              
+              for (const vulnDetail of scanResult.detectionDetails) {
+                try {
+                  const existingVuln = await Vulnerability.findOne({
+                    $and: [
+                      {
+                        $or: [
+                          { cve: vulnDetail.cve },
+                          { title: vulnDetail.title }
+                        ]
+                      },
+                      target.targetType === 'asset' 
+                        ? { asset: target._id }
+                        : { device: target._id }
+                    ]
+                  });
+
+                  let vulnerability;
+                  if (existingVuln) {
+                    existingVuln.discoveredDate = new Date();
+                    existingVuln.scanResult = savedScanResult._id;
+                    if (existingVuln.status === 'Resolved' || existingVuln.status === 'Closed') {
+                      existingVuln.status = 'Open';
+                    }
+                    await existingVuln.save();
+                    vulnerability = existingVuln;
+                  } else {
+                    vulnerability = await Vulnerability.create({
+                      title: vulnDetail.title || `${vulnDetail.cve} - ${scanResult.service} vulnerability`,
+                      cve: vulnDetail.cve || null,
+                      severity: vulnDetail.severity || 'Medium',
+                      description: vulnDetail.description || 'Vulnerability detected during quick scan',
+                      cvssScore: vulnDetail.cvssScore || 0,
+                      remediation: vulnDetail.remediation || 'Review and apply security patches',
+                      exploitAvailable: vulnDetail.exploitAvailable || false,
+                      references: vulnDetail.references || [],
+                      discoveredDate: new Date(),
+                      status: 'Open',
+                      ...(target.targetType === 'asset' 
+                        ? { asset: target._id } 
+                        : { device: target._id }),
+                      scanResult: savedScanResult._id,
+                      cpeMatch: scanResult.cpe,
+                      affectedProducts: scanResult.product ? [scanResult.product] : []
+                    });
+                    allVulnerabilities.push(vulnerability);
+                  }
+
+                  vulnerabilityIds.push(vulnerability._id);
+                } catch (error) {
+                  console.error(`Error processing vulnerability in quick scan:`, error);
+                }
+              }
+              
+              savedScanResult.vulnerabilities = vulnerabilityIds;
+              await savedScanResult.save();
+            }
+            
+            allResults.push(savedScanResult);
+          }
+
+          // Update lastScanDate
+          if (target.targetType === 'asset') {
+            await Asset.findByIdAndUpdate(target._id, { lastScanDate: new Date() });
+          } else {
+            await NetworkDevice.findByIdAndUpdate(target._id, { lastScanDate: new Date() });
+          }
+          
+          totalScanned++;
+        } catch (error) {
+          console.error(`Error scanning target ${target.name}:`, error);
+        }
       }
-    }
 
-    // Complete the scan
-    progressTracker.complete(`Quick scan completed - ${totalScanned}/${allTargets.length} targets scanned`);
-
-    const response = {
-      success: true,
-      message: `Quick scan completed for ${totalScanned} targets`,
-      summary: {
+      // Complete the scan with final summary
+      const summary = {
         totalTargets: allTargets.length,
         totalAssets: assets.length,
         totalDevices: devices.length,
         scannedTargets: totalScanned,
         totalVulnerabilities: allVulnerabilities.length,
-        newVulnerabilities: allVulnerabilities.length
-      },
-      results: allResults.slice(0, 10)
-    };
+        newVulnerabilities: allVulnerabilities.length,
+        highestSeverity: getHighestSeverity(allVulnerabilities)
+      };
 
-    res.json(response);
+      progressTracker.complete(
+        `Quick scan completed - ${totalScanned}/${allTargets.length} targets scanned`,
+        summary
+      );
+
+      console.log('Quick scan completed:', summary);
+    })().catch(error => {
+      console.error('Quick scan async error:', error);
+      progressTracker.setError(`Quick scan failed: ${error.message}`);
+    });
+
   } catch (error) {
-    console.error('Quick scan error:', error);
-    progressTracker.setError(`Quick scan failed: ${error.message}`);
+    console.error('Quick scan initialization error:', error);
+    progressTracker.setError(`Quick scan failed to start: ${error.message}`);
 
     res.status(500).json({ 
       success: false,
-      message: 'Quick scan failed', 
+      message: 'Quick scan failed to start', 
       error: error.message 
     });
   }

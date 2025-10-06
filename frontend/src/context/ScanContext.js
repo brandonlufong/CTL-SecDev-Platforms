@@ -15,7 +15,7 @@ export const useScan = () => {
 
 export const ScanProvider = ({ children }) => {
   const { token } = useContext(AuthContext);
-  const { emit } = useSocket();
+  const { emit, scanProgress } = useSocket();
 
   // Scan Results State
   const [scanResults, setScanResults] = useState([]);
@@ -36,24 +36,60 @@ export const ScanProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
   const [scanHistory, setScanHistory] = useState([]);
 
+  // Load scan history from localStorage
   useEffect(() => {
-  // Load scan history from localStorage on mount
-  const savedHistory = localStorage.getItem('scanHistory');
-  if (savedHistory) {
-    try {
-      setScanHistory(JSON.parse(savedHistory));
-    } catch (err) {
-      console.error('Failed to load scan history', err);
+    const savedHistory = localStorage.getItem('scanHistory');
+    if (savedHistory) {
+      try {
+        setScanHistory(JSON.parse(savedHistory));
+      } catch (err) {
+        console.error('Failed to load scan history', err);
+      }
     }
-  }
-}, []);
+  }, []);
 
-useEffect(() => {
-// Save scan history to localStorage whenever it changes
-if (scanHistory.length > 0) {
-    localStorage.setItem('scanHistory', JSON.stringify(scanHistory));
-}
-}, [scanHistory]);
+  // Save scan history to localStorage
+  useEffect(() => {
+    if (scanHistory.length > 0) {
+      localStorage.setItem('scanHistory', JSON.stringify(scanHistory));
+    }
+  }, [scanHistory]);
+
+  // Monitor socket scan completion
+  useEffect(() => {
+    if (!scanProgress.active && scanProgress.percent === 100 && scanProgress.message) {
+      // Scan completed via socket
+      console.log('Scan completed detected via socket:', scanProgress);
+      
+      // Reset scanning states
+      setScanningTargetId(null);
+      setScanningAll(false);
+      
+      // Show completion notification if we were scanning
+      if (scanningAll || scanningTargetId) {
+        const details = scanProgress.details;
+        if (details && (details.scannedTargets || details.scannedAssets)) {
+          addNotification(
+            'success',
+            `Scan completed! Scanned ${details.scannedTargets || details.scannedAssets || 0} targets and found ${details.totalVulnerabilities || 0} vulnerabilities.`,
+            10000
+          );
+          
+          // Add to history if batch scan
+          if ((details.scannedTargets > 1 || details.scannedAssets > 1) && scanningAll) {
+            setScanHistory(prev => [{
+              id: Date.now(),
+              target: { name: 'All Targets', targetType: 'batch' },
+              scanType: 'quick',
+              timestamp: new Date(),
+              resultCount: details.totalTargets || details.totalAssets || 0,
+              vulnerabilityCount: details.totalVulnerabilities || 0
+            }, ...prev].slice(0, 50));
+          }
+        }
+      }
+    }
+  }, [scanProgress, scanningAll, scanningTargetId]);
 
   // Add notification
   const addNotification = useCallback((type, message, duration = 5000) => {
@@ -77,147 +113,145 @@ if (scanHistory.length > 0) {
   }, []);
 
   // Start Single Target Scan
-const startScan = useCallback(async (target, scanType = 'quick') => {
-  // Fix: Properly determine targetType
-  const _id = target._id;
-  const name = target.name;
-  const targetType = target.targetType || (target.type === 'Network Device' ? 'device' : 'asset');
-  
-  console.log('Starting scan for:', { _id, name, targetType }); // Debug log
-  
-  setScanningTargetId(_id);
-  
-  try {
-    const endpoint = targetType === 'device' ? 'device' : 'asset';
-    const bodyKey = targetType === 'device' ? 'deviceId' : 'assetId';
+  const startScan = useCallback(async (target, scanType = 'quick') => {
+    const _id = target._id;
+    const name = target.name;
+    const targetType = target.targetType || (target.type === 'Network Device' ? 'device' : 'asset');
     
-    console.log('Scan request:', { endpoint, bodyKey, _id, scanType }); // Debug log
+    console.log('Starting scan for:', { _id, name, targetType });
     
-    const res = await fetch(`${config.API_BASE_URL}/api/scan/${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ 
-        [bodyKey]: _id, 
-        scanType 
-      }),
-    });
-
-    const data = await res.json();
-    console.log('Scan response:', data); // Debug log
-
-    if (data.success) {
-      // Format scan results
-      const formattedResults = (data.scanResults || []).map(result => ({
-        ...result,
-        vulnerabilities: Array.isArray(result.vulnerabilities) ? 
-          result.vulnerabilities.map(vuln => {
-            if (typeof vuln === 'string') return vuln;
-            if (typeof vuln === 'object' && vuln !== null) {
-              return {
-                ...vuln,
-                title: String(vuln.title || vuln.cve || vuln.name || 'Unknown'),
-                severity: String(vuln.severity || 'Unknown'),
-                cve: String(vuln.cve || ''),
-                cvssScore: vuln.cvssScore ? Number(vuln.cvssScore) : 0
-              };
-            }
-            return 'Unknown Vulnerability';
-          }) : []
-      }));
+    setScanningTargetId(_id);
+    
+    try {
+      const endpoint = targetType === 'device' ? 'device' : 'asset';
+      const bodyKey = targetType === 'device' ? 'deviceId' : 'assetId';
       
-      // Store results
-      setScanResults(formattedResults);
-      setLatestScanResults({
-        results: formattedResults,
-        target: { _id, name, targetType },
-        scanType,
-        timestamp: new Date(),
-        summary: data.scanSummary
+      const res = await fetch(`${config.API_BASE_URL}/api/scan/${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ 
+          [bodyKey]: _id, 
+          scanType 
+        }),
       });
-      setScannedTargetInfo({ _id, name, targetType });
-      
-      // Show modal
-      setShowScanResultModal(true);
-      
-      // Add to history
-      setScanHistory(prev => [{
-        id: Date.now(),
-        target: { _id, name, targetType },
-        scanType,
-        timestamp: new Date(),
-        resultCount: formattedResults.length,
-        vulnerabilityCount: data.newVulnerabilities || 0
-      }, ...prev].slice(0, 50));
-      
-      // Notify success
-      addNotification(
-        'success', 
-        `${scanType.charAt(0).toUpperCase() + scanType.slice(1)} scan completed for ${name}. Found ${data.newVulnerabilities || 0} vulnerabilities.`
-      );
-      
-      return { success: true, data };
-    } else {
-      addNotification('error', data.message || 'Scan failed');
-      return { success: false, error: data.message };
+
+      const data = await res.json();
+
+      if (data.success) {
+        const formattedResults = (data.scanResults || []).map(result => ({
+          ...result,
+          vulnerabilities: Array.isArray(result.vulnerabilities) ? 
+            result.vulnerabilities.map(vuln => {
+              if (typeof vuln === 'string') return vuln;
+              if (typeof vuln === 'object' && vuln !== null) {
+                return {
+                  ...vuln,
+                  title: String(vuln.title || vuln.cve || vuln.name || 'Unknown'),
+                  severity: String(vuln.severity || 'Unknown'),
+                  cve: String(vuln.cve || ''),
+                  cvssScore: vuln.cvssScore ? Number(vuln.cvssScore) : 0
+                };
+              }
+              return 'Unknown Vulnerability';
+            }) : []
+        }));
+        
+        setScanResults(formattedResults);
+        setLatestScanResults({
+          results: formattedResults,
+          target: { _id, name, targetType },
+          scanType,
+          timestamp: new Date(),
+          summary: data.scanSummary
+        });
+        setScannedTargetInfo({ _id, name, targetType });
+        
+        setShowScanResultModal(true);
+        
+        setScanHistory(prev => [{
+          id: Date.now(),
+          target: { _id, name, targetType },
+          scanType,
+          timestamp: new Date(),
+          resultCount: formattedResults.length,
+          vulnerabilityCount: data.newVulnerabilities || 0
+        }, ...prev].slice(0, 50));
+        
+        addNotification(
+          'success', 
+          `${scanType.charAt(0).toUpperCase() + scanType.slice(1)} scan completed for ${name}. Found ${data.newVulnerabilities || 0} vulnerabilities.`
+        );
+        
+        return { success: true, data };
+      } else {
+        addNotification('error', data.message || 'Scan failed');
+        return { success: false, error: data.message };
+      }
+    } catch (err) {
+      console.error('Scan failed', err);
+      addNotification('error', 'Scan failed due to server error');
+      return { success: false, error: err.message };
+    } finally {
+      setScanningTargetId(null);
     }
-  } catch (err) {
-    console.error('Scan failed', err);
-    addNotification('error', 'Scan failed due to server error');
-    return { success: false, error: err.message };
-  } finally {
-    setScanningTargetId(null);
-  }
-}, [token, addNotification]);
+  }, [token, addNotification]);
 
-  // Start Quick Scan All
-const scanAllTargets = useCallback(async () => {
-  setScanningAll(true);
-  
-  try {
-    const res = await fetch(`${config.API_BASE_URL}/api/scan/quick`, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}` 
-      },
-    });
+  // Start Quick Scan All - FIXED VERSION
+  const scanAllTargets = useCallback(async () => {
+    setScanningAll(true);
+    
+    try {
+      const res = await fetch(`${config.API_BASE_URL}/api/scan/quick`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}` 
+        },
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (data.success) {
-      // Note: The scan has completed on the backend by the time we get the response
-      addNotification(
-        'success',
-        `Quick scan completed! Scanned ${data.summary.scannedTargets || data.summary.scannedAssets} targets and found ${data.summary.totalVulnerabilities} vulnerabilities.`,
-        10000 // Show notification for 10 seconds
-      );
-      
-      // Store summary
-      setScanHistory(prev => [{
-        id: Date.now(),
-        target: { name: 'All Targets', targetType: 'batch' },
-        scanType: 'quick',
-        timestamp: new Date(),
-        resultCount: data.summary.totalTargets || data.summary.totalAssets,
-        vulnerabilityCount: data.summary.totalVulnerabilities
-      }, ...prev].slice(0, 50));
-      
-    //   return { success: true, data };
-    } else {
-      addNotification('error', data.message || 'Quick scan failed');
-    //   return { success: false, error: data.message };
+      if (data.success) {
+        if (data.status === 'started') {
+          // Async scan started - socket will handle completion
+          addNotification(
+            'info',
+            `Quick scan started for ${data.summary?.totalTargets || 'all'} targets. Watch the progress indicator.`,
+            5000
+          );
+          // Don't set setScanningAll(false) here - let socket completion handle it
+        } else if (data.status === 'completed') {
+          // Synchronous completion (unlikely for batch scans)
+          addNotification(
+            'success',
+            `Quick scan completed! Scanned ${data.summary.scannedTargets || data.summary.scannedAssets} targets and found ${data.summary.totalVulnerabilities} vulnerabilities.`,
+            10000
+          );
+          
+          setScanHistory(prev => [{
+            id: Date.now(),
+            target: { name: 'All Targets', targetType: 'batch' },
+            scanType: 'quick',
+            timestamp: new Date(),
+            resultCount: data.summary.totalTargets || data.summary.totalAssets,
+            vulnerabilityCount: data.summary.totalVulnerabilities
+          }, ...prev].slice(0, 50));
+          
+          setScanningAll(false);
+        }
+      } else {
+        addNotification('error', data.message || 'Quick scan failed');
+        setScanningAll(false);
+      }
+    } catch (err) {
+      console.error('Quick scan failed', err);
+      addNotification('error', `Quick scan failed: ${err.message}`);
+      setScanningAll(false);
     }
-  } catch (err) {
-    console.error('Quick scan failed', err);
-    addNotification('error', `Quick scan failed: ${err.message}`);
-    // return { success: false, error: err.message };
-  } finally {
-    setScanningAll(false);
-  }
-}, [token, addNotification]);
+  }, [token, addNotification]);
 
   // Batch Scan
   const batchScan = useCallback(async (targetIds, scanType = 'quick') => {
@@ -269,7 +303,6 @@ const scanAllTargets = useCallback(async () => {
     const { _id, targetType = 'asset' } = target;
     
     try {
-      const endpoint = targetType === 'device' ? 'device' : 'asset';
       const res = await fetch(`${config.API_BASE_URL}/api/scan/test/${_id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });

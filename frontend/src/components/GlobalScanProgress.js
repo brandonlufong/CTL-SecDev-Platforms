@@ -5,6 +5,7 @@ import { useSocket } from '../context/SocketContext';
 
 const GlobalScanProgress = () => {
   const { scanProgress, resetScanProgress, isConnected } = useSocket();
+  console.log(scanProgress.details)
 
   // Don't show if not active and no message
   if (!scanProgress.active && !scanProgress.message) {
@@ -72,14 +73,24 @@ const GlobalScanProgress = () => {
           {scanProgress.details && (
             <div className="mt-2 p-2 bg-light rounded">
               <small>
-                {scanProgress.details.currentAsset && (
-                  <div><strong>Current:</strong> {scanProgress.details.currentAsset}</div>
-                )}
-                {scanProgress.details.completedAssets !== undefined && scanProgress.details.totalAssets && (
+                {(scanProgress.details.currentAsset || scanProgress.details.currentDevice) && (
                   <div>
-                    <strong>Progress:</strong> {scanProgress.details.completedAssets}/{scanProgress.details.totalAssets} targets
+                    <strong>Current:</strong>{" "}
+                    {scanProgress.details.currentAsset
+                      ? scanProgress.details.currentAsset
+                      : scanProgress.details.currentDevice}
                   </div>
                 )}
+
+                {(scanProgress.details.completedAssets !== undefined && scanProgress.details.totalAssets) ||
+                (scanProgress.details.completedDevices !== undefined && scanProgress.details.totalDevices) ? (
+                  <div>
+                    <strong>Progress:</strong>{" "}
+                    {scanProgress.details.completedAssets !== undefined
+                      ? `${scanProgress.details.completedAssets}/${scanProgress.details.totalAssets} assets`
+                      : `${scanProgress.details.completedDevices}/${scanProgress.details.totalDevices} devices`}
+                  </div>
+                ) : null}
               </small>
             </div>
           )}
