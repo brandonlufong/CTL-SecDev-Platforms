@@ -35,7 +35,7 @@ const scanTypes = [
 const Devices = () => {
   const { token } = useContext(AuthContext);
 
-  const { isConnected, scanProgress, resetScanProgress } = useSocket(token);
+  const { isConnected, scanProgress, resetScanProgress, showScanResults } = useSocket();
   const [devices, setDevices] = useState([]);
   const [filteredDevices, setFilteredDevices] = useState([]);
   const [showModal, setShowModal] = useState(false);
@@ -287,6 +287,7 @@ const Devices = () => {
       setScanResults(formattedResults);
       setSuccess(`${scanType.charAt(0).toUpperCase() + scanType.slice(1)} scan completed successfully. Found ${data.newVulnerabilities || 0} new vulnerabilities.`);
       setShowScanModal(true);
+      showScanResults({ assetName: name, scanResults: formattedResults, scanSummary: data.scanSummary || {} });
 
       // Refresh both devices and vulnerabilities
       fetchDevices();

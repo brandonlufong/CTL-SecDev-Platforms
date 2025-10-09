@@ -23,6 +23,12 @@ export const SocketProvider = ({ children }) => {
     message: '',
     details: null
   });
+  const [scanResultsModal, setScanResultsModal] = useState({
+    show: false,
+    assetName: '',
+    scanResults: [],
+    scanSummary: {},
+  });
 
   useEffect(() => {
     if (!token) {
@@ -84,6 +90,7 @@ export const SocketProvider = ({ children }) => {
         message: data.message || 'Scan completed successfully',
         details: data.details || null
       });
+      // Optionally request latest scans via REST to populate modal when desired
     });
 
     socket.on('scanError', (data) => {
@@ -132,6 +139,14 @@ export const SocketProvider = ({ children }) => {
     });
   };
 
+  // Global control for showing/hiding scan results modal
+  const showScanResults = ({ assetName, scanResults, scanSummary }) => {
+    setScanResultsModal({ show: true, assetName, scanResults, scanSummary });
+  };
+  const hideScanResults = () => {
+    setScanResultsModal({ show: false, assetName: '', scanResults: [], scanSummary: {} });
+  };
+
   return (
     <SocketContext.Provider
       value={{
@@ -140,7 +155,10 @@ export const SocketProvider = ({ children }) => {
         emit,
         requestScanStatus,
         resetScanProgress,
-        socket: socketRef.current
+        socket: socketRef.current,
+        scanResultsModal,
+        showScanResults,
+        hideScanResults
       }}
     >
       {children}

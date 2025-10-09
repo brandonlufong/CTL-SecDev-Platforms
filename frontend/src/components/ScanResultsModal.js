@@ -57,12 +57,19 @@ const ScanResultsModal = ({
   const getAllVulnerabilities = () => {
     const vulnerabilities = [];
     scanResults.forEach(result => {
-      if (result.detectionDetails && result.detectionDetails.length > 0) {
-        result.detectionDetails.forEach(vuln => {
+      const details = Array.isArray(result.detectionDetails) ? result.detectionDetails : [];
+      const flatVulns = Array.isArray(result.vulnerabilities) ? result.vulnerabilities : [];
+
+      // Prefer rich detectionDetails if present, otherwise use basic vulnerabilities strings
+      const source = details.length > 0 ? details : flatVulns;
+      if (source && source.length > 0) {
+        source.forEach(vuln => {
           // Check if vulnerability already exists
-          if (!vulnerabilities.find(v => v.cve === vuln.cve && v.title === vuln.title)) {
+          const keyTitle = typeof vuln === 'object' ? (vuln.title || vuln.cve || String(vuln)) : String(vuln);
+          const keyCve = typeof vuln === 'object' ? (vuln.cve || '') : '';
+          if (!vulnerabilities.find(v => v.cve === keyCve && v.title === keyTitle)) {
             vulnerabilities.push({
-              ...vuln,
+              ...(typeof vuln === 'object' ? vuln : { title: keyTitle, cve: keyCve }),
               port: result.port,
               service: result.service,
               product: result.product,

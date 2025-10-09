@@ -50,7 +50,7 @@ const GlobalScanProgress = () => {
         <Card.Body>
           <div className="d-flex justify-content-between align-items-center mb-2">
             <small className="text-muted">
-              {scanProgress.active ? 'In Progress' : 'Completed'}
+              {scanProgress.active ? 'In Progress' : (scanProgress.percent === 0 ? 'Idle' : 'Completed')}
             </small>
             <Badge bg="info">{scanProgress.percent}%</Badge>
           </div>
