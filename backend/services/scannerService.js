@@ -306,6 +306,8 @@ class ScannerService {
     this.isWindows = this.platform === 'win32';
     this.isMac = this.platform === 'darwin';
     this.nmapAvailable = null;
+    // On Linux, many scan types require raw socket privileges. Detect if we're root.
+    this.isRoot = typeof process.geteuid === 'function' ? process.geteuid() === 0 : false;
   }
 
   /**
@@ -430,64 +432,47 @@ class ScannerService {
     options.push('-oX', '-');
 
     // Privilege check considerations
-    const requiresPrivileges = !this.isWindows;
+    // Raw socket scans like -sS (SYN) and -sU (UDP) need root/admin privileges on Linux/macOS.
+    const hasRawPrivileges = (this.isLinux || this.isMac) && this.isRoot;
 
     switch (scanType) {
       case 'quick':
         options.push('-F');
-        if (this.isLinux && requiresPrivileges) {
-          options.push('-sS');
-        } else {
-          options.push('-sT'); // TCP connect scan (no privileges needed)
-        }
+        options.push(hasRawPrivileges ? '-sS' : '-sT'); // Prefer SYN if privileged, else TCP connect
         break;
       case 'comprehensive':
-        if (this.isLinux && requiresPrivileges) {
-          options.push('-sS');
-          options.push('-p-');
-          options.push('-A');
-        } else {
-          options.push('-sT');
-          options.push('--top-ports', '1000'); // Limit ports on non-Linux
-        }
+        options.push(hasRawPrivileges ? '-sS' : '-sT');
+        // All ports if possible; otherwise keep it sane
+        options.push(hasRawPrivileges ? '-p-' : '--top-ports');
+        if (!hasRawPrivileges) options.push('1000');
+        // -A includes OS detection (-O) which needs raw sockets. Only include when privileged.
+        if (hasRawPrivileges) options.push('-A');
         break;
       case 'stealth':
-        if (this.isLinux && requiresPrivileges) {
-          options.push('-sS');
-          options.push('-T2');
-        } else {
-          options.push('-sT');
-          options.push('-T3'); // Stealth not fully supported without privileges
-        }
+        options.push(hasRawPrivileges ? '-sS' : '-sT');
+        options.push(hasRawPrivileges ? '-T2' : '-T3');
         options.push('--top-ports', '1000');
         break;
       case 'udp':
-        if (this.isLinux && requiresPrivileges) {
+        if (hasRawPrivileges) {
           options.push('-sU');
+          options.push('--top-ports', '100'); // Reduced for UDP
         } else {
-          // UDP scanning requires privileges, fallback to TCP
-          console.warn('UDP scan requires root/admin privileges. Falling back to TCP scan.');
+          // UDP scanning requires privileges, fallback gracefully
+          console.warn('UDP scan requires root/admin privileges. Falling back to TCP connect scan.');
           options.push('-sT');
+          options.push('--top-ports', '100');
         }
-        options.push('--top-ports', '100'); // Reduced for UDP
         break;
       case 'vulnerability':
-        if (this.isLinux && requiresPrivileges) {
-          options.push('-sS');
-        } else {
-          options.push('-sT');
-        }
+        options.push(hasRawPrivileges ? '-sS' : '-sT');
         options.push('--top-ports', '1000');
         if (includeVulnScripts) {
           options.push('--script', 'vuln,safe,discovery');
         }
         break;
       default:
-        if (this.isLinux && requiresPrivileges) {
-          options.push('-sS');
-        } else {
-          options.push('-sT');
-        }
+        options.push(hasRawPrivileges ? '-sS' : '-sT');
         options.push('--top-ports', '1000');
     }
 

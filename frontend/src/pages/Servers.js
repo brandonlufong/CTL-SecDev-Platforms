@@ -34,7 +34,8 @@ const scanTypes = [
 const Servers = () => {
   const { token } = useContext(AuthContext);
 
-  const { isConnected, scanProgress, resetScanProgress } = useSocket(token);
+  // Use global socket context (already bound to AuthProvider in App)
+  const { isConnected, scanProgress, resetScanProgress, showScanResults } = useSocket();
   const [assets, setAssets] = useState([]);
   const [filteredAssets, setFilteredAssets] = useState([]);
   const [showModal, setShowModal] = useState(false);
@@ -287,6 +288,8 @@ const Servers = () => {
       setScanResults(formattedResults);
       setSuccess(`${scanType.charAt(0).toUpperCase() + scanType.slice(1)} scan completed successfully. Found ${data.newVulnerabilities || 0} new vulnerabilities.`);
       setShowScanModal(true);
+      // Also present globally so it persists across navigation
+      showScanResults({ assetName: name, scanResults: formattedResults, scanSummary: data.scanSummary || {} });
       
       // Refresh both assets and vulnerabilities
       fetchAssets();
@@ -400,7 +403,7 @@ const Servers = () => {
       const data = await res.json();
 
       if (data.success) {
-        setSuccess(`Quick scan completed! Scanned ${data.summary.scannedAssets} assets and found ${data.summary.totalVulnerabilities} vulnerabilities.`);
+        setSuccess(`Quick scan completed! Scanned ${data.summary.scannedTargets || data.summary.scannedAssets || 0} targets and found ${data.summary.totalVulnerabilities || 0} vulnerabilities.`);
         fetchAssets(); // Refresh to show updated scan dates
       } else {
         setError(data.message || 'Quick scan failed');

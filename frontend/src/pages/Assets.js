@@ -10,6 +10,7 @@ import Select from 'react-select';
 import Papa from 'papaparse'; // For CSV Export
 import '../App.css'
 import config from '../config';
+import { useSocket } from '../context/SocketContext';
 
 const assetTypes = ['Server', 'Database', 'Application', 'Network Device'];
 const serverStatuses = ['Online', 'Offline', 'Maintenance'];
@@ -23,6 +24,7 @@ const osOptions = ['Windows 10', 'Ubuntu 22.04', 'macOS 13 Ventura', 'RedHat 9',
 const Assets = () => {
   const { token } = useContext(AuthContext);
 
+  const { showScanResults, resetScanProgress } = useSocket();
   const [assets, setAssets] = useState([]);
   const [filteredAssets, setFilteredAssets] = useState([]);
   const [showModal, setShowModal] = useState(false);
@@ -205,24 +207,29 @@ const Assets = () => {
     setScanLogs([]);
 
     try {
-      const res = await fetch(`${config.API_BASE_URL}/api/scan/nmap`, {
+      const res = await fetch(`${config.API_BASE_URL}/api/scan/asset`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ assetId: _id }),
+        body: JSON.stringify({ assetId: _id, scanType: 'quick' }),
       });
 
       const data = await res.json();
 
-      if (res.ok && data.logs?.length > 0) {
+      if (data.success) {
         setScannedAssetName(name);
-        setScanLogs(data.logs);
+        const formattedResults = (data.scanResults || []).map(result => ({
+          ...result,
+          vulnerabilities: Array.isArray(result.vulnerabilities) ? result.vulnerabilities : []
+        }));
+        setScanLogs(formattedResults);
         setSuccess('Scan completed successfully.');
         setShowScanModal(true);
+        showScanResults({ assetName: name, scanResults: formattedResults, scanSummary: data.scanSummary || {} });
       } else {
-        setError(data.message || 'No vulnerabilities found or scan failed.');
+        setError(data.message || 'Scan failed.');
       }
     } catch (err) {
       console.error('Scan failed', err);
@@ -237,41 +244,19 @@ const Assets = () => {
     setScanAllProgress(0);
     setError('');
     setSuccess('');
+    resetScanProgress();
     try {
-      let completed = 0;
-      for (const asset of assets) {
-        const res = await fetch(`${config.API_BASE_URL}/api/scan/nmap`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify({ assetId: asset._id }),
-        });
-
-        const data = await res.json();
-
-        // Determine status based on scan result
-        const updatedStatus = res.ok && data.logs?.length > 0 ? 'Online' : 'Offline';
-
-        // Update asset status
-        await fetch(`${config.API_BASE_URL}/api/assets/${asset._id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ ...asset, status: updatedStatus }),
-        });
-
-        // Increment progress
-        completed += 1;
-        setScanAllProgress(completed);
+      const res = await fetch(`${config.API_BASE_URL}/api/scan/quick`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSuccess(`Quick scan completed! Scanned ${data.summary.scannedTargets || data.summary.totalAssets || 0} targets.`);
+        fetchAssets();
+      } else {
+        setError(data.message || 'Failed to run quick scan.');
       }
-
-      // Refresh assets list
-      fetchAssets();
-      setSuccess('All assets statuses have been updated.');
     } catch (err) {
       console.error('Update failed', err);
       setError('Failed to update assets.');
@@ -757,13 +742,17 @@ const Assets = () => {
                         <ul style={{ margin: 0, paddingLeft: '1rem' }}>
                           {log.vulnerabilities.map((vuln, i) => (
                             <li key={i}>
-                              <a
-                                href={`https://cve.mitre.org/cgi-bin/cvename.cgi?name=${vuln}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                {vuln}
-                              </a>
+                              {typeof vuln === 'string' ? (
+                                <a
+                                  href={`https://cve.mitre.org/cgi-bin/cvename.cgi?name=${vuln}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  {vuln}
+                                </a>
+                              ) : (
+                                <span>{vuln.title || vuln.cve || 'Vulnerability'}</span>
+                              )}
                             </li>
                           ))}
                         </ul>

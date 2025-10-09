@@ -1,7 +1,8 @@
-import React, { createContext, useState, useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { SocketProvider } from './context/SocketContext'; // Add this
 import GlobalScanProgress from './components/GlobalScanProgress'; // Add this
+import ScanResultsModal from './components/ScanResultsModal';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
@@ -14,38 +15,32 @@ import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import Layout from './components/Layout';
 import PrivateRoute from './components/PrivateRoute';
-
-// Auth context to store user info and token
-export const AuthContext = createContext();
+import { AuthProvider } from './context/AuthContext';
+import { useSocket } from './context/SocketContext';
+const GlobalUI = () => {
+  const { scanResultsModal, hideScanResults } = useSocket();
+  return (
+    <>
+      <GlobalScanProgress />
+      <ScanResultsModal
+        show={scanResultsModal.show}
+        onHide={hideScanResults}
+        scanResults={scanResultsModal.scanResults}
+        assetName={scanResultsModal.assetName}
+        scanSummary={scanResultsModal.scanSummary}
+      />
+    </>
+  );
+};
 
 const App = () => {
-  const [auth, setAuth] = useState(() => {
-    // load token from localStorage if exists
-    const token = localStorage.getItem('token');
-    return { token, user: null };
-  });
-
-  // Dummy effect to fetch user info after login
-  useEffect(() => {
-    if (auth.token) {
-      // Fetch user info with token here and set user object
-      // For now, mock user data:
-      setAuth(prev => ({ ...prev, user: { username: 'demoUser', role: 'admin' } }));
-    }
-  }, [auth.token]);
-
-  // Simple PrivateRoute wrapper
-  // const PrivateRoute = ({ children }) => {
-  //   return auth.token ? children : <Navigate to="/login" replace />;
-  // };
-
   return (
-    <AuthContext.Provider value={{ auth, setAuth }}>
+    <AuthProvider>
       <SocketProvider>
         <BrowserRouter>
           <Navbar />
           <Layout>
-            {/* Define routes */}
+            <GlobalUI />
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<Signup />} />
@@ -102,9 +97,10 @@ const App = () => {
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Layout>
+          <Footer />
         </BrowserRouter>
       </SocketProvider>
-    </AuthContext.Provider>
+    </AuthProvider>
   );
 };
 

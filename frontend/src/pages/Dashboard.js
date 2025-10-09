@@ -51,7 +51,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { token } = useContext(AuthContext);
 
-  const { isConnected, scanProgress, resetScanProgress } = useSocket(token);
+  const { isConnected, scanProgress, resetScanProgress } = useSocket();
   const [scanningAll, setScanningAll] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');

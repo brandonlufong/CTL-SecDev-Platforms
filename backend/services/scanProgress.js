@@ -38,6 +38,7 @@ const scanProgress = {
   totalAssets: 0,
   completedAssets: 0,
   startTime: null,
+  details: null,
 };
 
 module.exports = {
@@ -55,8 +56,14 @@ module.exports = {
     scanProgress.message = msg;
     scanProgress.active = true;
 
-    // Merge additional data
+    // Merge additional data (top-level for backward compatibility)
     Object.assign(scanProgress, additionalData);
+
+    // Also keep a nested details object for richer UIs
+    scanProgress.details = {
+      ...(scanProgress.details || {}),
+      ...additionalData,
+    };
 
     // Broadcast progress via WebSocket if ioInstance exists
     if (ioInstance) {
@@ -105,6 +112,7 @@ module.exports = {
     scanProgress.totalAssets = totalAssets;
     scanProgress.completedAssets = 0;
     scanProgress.startTime = new Date();
+    scanProgress.details = { totalAssets, completedAssets: 0 };
 
     if (ioInstance) {
       ioInstance.emit('scanProgress', { ...scanProgress });
@@ -124,6 +132,13 @@ module.exports = {
       ? `Scanning ${currentAsset} (${completedAssets}/${scanProgress.totalAssets})`
       : `Progress: ${completedAssets}/${scanProgress.totalAssets} assets scanned`;
 
+    scanProgress.details = {
+      ...(scanProgress.details || {}),
+      currentAsset,
+      completedAssets,
+      totalAssets: scanProgress.totalAssets,
+    };
+
     if (ioInstance) {
       ioInstance.emit('scanProgress', { ...scanProgress });
     }
@@ -133,6 +148,10 @@ module.exports = {
   setError: (errorMessage) => {
     scanProgress.active = false;
     scanProgress.message = errorMessage;
+    scanProgress.details = {
+      ...(scanProgress.details || {}),
+      error: errorMessage,
+    };
 
     if (ioInstance) {
       ioInstance.emit('scanError', { 

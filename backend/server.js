@@ -43,6 +43,16 @@ progressTracker.init(io);
 io.on('connection', (socket) => {
   console.log(`Socket connected: ${socket.id}`);
 
+  // Respond with current scan status when requested
+  socket.on('getScanStatus', () => {
+    try {
+      const current = progressTracker.getProgress();
+      socket.emit('scanProgress', current);
+    } catch (err) {
+      console.error('Error handling getScanStatus:', err);
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log(`Socket disconnected: ${socket.id}`);
   });
