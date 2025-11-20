@@ -1,7 +1,7 @@
 import React, { createContext, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { SocketProvider } from './context/SocketContext'; // Add this
-import GlobalScanProgress from './components/GlobalScanProgress'; // Add this
+import { SocketProvider } from './context/SocketContext';
+import GlobalScanProgress from './components/GlobalScanProgress';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
@@ -13,12 +13,35 @@ import Footer from './components/Footer';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import Layout from './components/Layout';
+import { useSocket } from './context/SocketContext';
+import ScanResultsModal from './components/ScanResultsModal';
 import PrivateRoute from './components/PrivateRoute';
-import { ScanProvider } from './context/ScanContext'; // Add this
-import GlobalNotifications from './components/GlobalNotifications'; // Add this
-import GlobalScanResultModal from './components/GlobalScanResultModal'; // Add this
-import GlobalScanOptionsModal from './components/GlobalScanOptionsModal'; // Add this
-import ScanHistorySidebar from './components/ScanHistorySidebar'; // Add this
+import { ScanProvider } from './context/ScanContext';
+import GlobalNotifications from './components/GlobalNotifications';
+import GlobalScanResultModal from './components/GlobalScanResultModal';
+import GlobalScanOptionsModal from './components/GlobalScanOptionsModal';
+import ScanHistorySidebar from './components/ScanHistorySidebar';
+
+const GlobalUI = () => {
+  const socketContext = useSocket();
+  
+  // Add safety check for undefined context values
+  const scanResultsModal = socketContext?.scanResultsModal || { show: false, scanResults: null, assetName: '', scanSummary: null };
+  const hideScanResults = socketContext?.hideScanResults || (() => {});
+
+  return (
+    <>
+      <GlobalScanProgress />
+      <ScanResultsModal
+        show={scanResultsModal.show}
+        onHide={hideScanResults}
+        scanResults={scanResultsModal.scanResults}
+        assetName={scanResultsModal.assetName}
+        scanSummary={scanResultsModal.scanSummary}
+      />
+    </>
+  );
+};
 
 // Auth context to store user info and token
 export const AuthContext = createContext();
@@ -39,11 +62,6 @@ const App = () => {
     }
   }, [auth.token]);
 
-  // Simple PrivateRoute wrapper
-  // const PrivateRoute = ({ children }) => {
-  //   return auth.token ? children : <Navigate to="/login" replace />;
-  // };
-
   return (
     <AuthContext.Provider value={{ auth, setAuth }}>
       <SocketProvider>
@@ -51,6 +69,7 @@ const App = () => {
           <ScanProvider>
             <Navbar />
             <Layout>
+              <GlobalUI />
               {/* Define routes */}
               <Routes>
                 <Route path="/login" element={<Login />} />

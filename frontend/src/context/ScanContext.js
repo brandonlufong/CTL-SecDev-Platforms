@@ -299,28 +299,43 @@ export const ScanProvider = ({ children }) => {
   }, [token, addNotification]);
 
   // Test Connectivity
-  const testConnectivity = useCallback(async (target) => {
-    const { _id, targetType = 'asset' } = target;
+//   const testConnectivity = useCallback(async (target) => {
+//     const { _id, targetType = 'asset' } = target;
     
-    try {
-      const res = await fetch(`${config.API_BASE_URL}/api/scan/test/${_id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
+//     try {
+//       console.log(`Testing connectivity for ${target.name} (${_id})...`);
+      
+//       const res = await fetch(`${config.API_BASE_URL}/api/scan/test/${_id}`, {
+//         headers: { Authorization: `Bearer ${token}` },
+//       });
+//       const data = await res.json();
 
-      if (data.success) {
-        return { 
-          success: true, 
-          reachable: data.reachable, 
-          testedAt: data.testedAt 
-        };
-      }
-      return { success: false, reachable: false };
-    } catch (err) {
-      console.error('Connectivity test failed', err);
-      return { success: false, reachable: false, error: err.message };
-    }
-  }, [token]);
+//       console.log('Connectivity test response:', data);
+
+//       if (data.success) {
+//         const result = { 
+//           success: true, 
+//           reachable: data.reachable,
+//           method: data.method,
+//           testedAt: data.testedAt 
+//         };
+        
+//         // Show notification
+//         if (data.reachable) {
+//           addNotification('success', `${target.name} is reachable via ${data.method}`, 3000);
+//         } else {
+//           addNotification('warning', `${target.name} is not reachable`, 3000);
+//         }
+        
+//         return result;
+//       }
+//       return { success: false, reachable: false };
+//     } catch (err) {
+//       console.error('Connectivity test failed', err);
+//       addNotification('error', `Connectivity test failed for ${target.name}: ${err.message}`);
+//       return { success: false, reachable: false, error: err.message };
+//     }
+//   }, [token, addNotification]);
 
   // Show scan options
   const showScanOptions = useCallback((target) => {
@@ -378,7 +393,7 @@ export const ScanProvider = ({ children }) => {
     startScan,
     scanAllTargets,
     batchScan,
-    testConnectivity,
+    // testConnectivity,
     showScanOptions,
     executeScanFromModal,
     closeScanResultModal,

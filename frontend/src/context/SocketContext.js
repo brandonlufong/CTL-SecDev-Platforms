@@ -1,6 +1,4 @@
-// Updated SocketContext.js with proper scan completion handling
-
-import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import io from 'socket.io-client';
 import config from '../config';
 import { AuthContext } from './AuthContext';
@@ -25,13 +23,16 @@ export const SocketProvider = ({ children }) => {
     message: '',
     details: null
   });
-  
-  // Callback refs for external handlers
-  const onScanCompleteRef = useRef(null);
-  const onScanErrorRef = useRef(null);
+  const [scanResultsModal, setScanResultsModal] = useState({
+    show: false,
+    assetName: '',
+    scanResults: [],
+    scanSummary: {},
+  });
 
   useEffect(() => {
     if (!token) {
+      // Disconnect socket if no token
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
@@ -39,6 +40,7 @@ export const SocketProvider = ({ children }) => {
       return;
     }
 
+    // Initialize socket connection
     console.log('Initializing socket connection...');
     socketRef.current = io(config.API_BASE_URL, {
       auth: { token },
@@ -50,9 +52,11 @@ export const SocketProvider = ({ children }) => {
 
     const socket = socketRef.current;
 
+    // Connection handlers
     socket.on('connect', () => {
       console.log('✅ Socket connected:', socket.id);
       setIsConnected(true);
+      // Request current scan status on connect/reconnect
       socket.emit('getScanStatus');
     });
 
@@ -66,6 +70,7 @@ export const SocketProvider = ({ children }) => {
       setIsConnected(false);
     });
 
+    // Scan progress handler
     socket.on('scanProgress', (data) => {
       console.log('📊 Scan progress update:', data);
       setScanProgress({
@@ -76,6 +81,7 @@ export const SocketProvider = ({ children }) => {
       });
     });
 
+    // Additional event handlers
     socket.on('scanCompleted', (data) => {
       console.log('✅ Scan completed:', data);
       setScanProgress({
@@ -84,11 +90,7 @@ export const SocketProvider = ({ children }) => {
         message: data.message || 'Scan completed successfully',
         details: data.details || null
       });
-      
-      // Call external completion handler if registered
-      if (onScanCompleteRef.current) {
-        onScanCompleteRef.current(data);
-      }
+      // Optionally request latest scans via REST to populate modal when desired
     });
 
     socket.on('scanError', (data) => {
@@ -99,13 +101,9 @@ export const SocketProvider = ({ children }) => {
         message: data.message || 'Scan failed',
         details: null
       });
-      
-      // Call external error handler if registered
-      if (onScanErrorRef.current) {
-        onScanErrorRef.current(data);
-      }
     });
 
+    // Cleanup
     return () => {
       if (socket) {
         console.log('Cleaning up socket connection');
@@ -120,35 +118,34 @@ export const SocketProvider = ({ children }) => {
     };
   }, [token]);
 
-  const emit = useCallback((event, data) => {
+  const emit = (event, data) => {
     if (socketRef.current && isConnected) {
       socketRef.current.emit(event, data);
     } else {
       console.warn('Socket not connected, cannot emit:', event);
     }
-  }, [isConnected]);
+  };
 
-  const requestScanStatus = useCallback(() => {
+  const requestScanStatus = () => {
     emit('getScanStatus');
-  }, [emit]);
+  };
 
-  const resetScanProgress = useCallback(() => {
+  const resetScanProgress = () => {
     setScanProgress({
       active: false,
       percent: 0,
       message: '',
       details: null
     });
-  }, []);
+  };
 
-  // Register handlers for scan completion/error
-  const onScanComplete = useCallback((handler) => {
-    onScanCompleteRef.current = handler;
-  }, []);
-
-  const onScanError = useCallback((handler) => {
-    onScanErrorRef.current = handler;
-  }, []);
+  // Global control for showing/hiding scan results modal
+  const showScanResults = ({ assetName, scanResults, scanSummary }) => {
+    setScanResultsModal({ show: true, assetName, scanResults, scanSummary });
+  };
+  const hideScanResults = () => {
+    setScanResultsModal({ show: false, assetName: '', scanResults: [], scanSummary: {} });
+  };
 
   return (
     <SocketContext.Provider
@@ -158,9 +155,10 @@ export const SocketProvider = ({ children }) => {
         emit,
         requestScanStatus,
         resetScanProgress,
-        onScanComplete,
-        onScanError,
-        socket: socketRef.current
+        socket: socketRef.current,
+        scanResultsModal,
+        showScanResults,
+        hideScanResults
       }}
     >
       {children}

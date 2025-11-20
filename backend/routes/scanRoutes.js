@@ -9,6 +9,7 @@ const {
   getLatestScans,
   getScanProgress,
   testConnectivity,
+  testBulkConnectivity,
   runBatchScan
 } = require('../controllers/scanController');
 const protect = require('../middleware/authMiddleware');
@@ -33,5 +34,11 @@ router.get('/progress', protect, getScanProgress);
 
 // Test asset connectivity
 router.get('/test/:assetId', protect, testConnectivity);
+
+// Test device connectivity
+router.get('/test/:deviceId', protect, testConnectivity);
+
+// Test bulk connectivity
+router.post('/test/bulk', protect, testBulkConnectivity);
 
 module.exports = router;

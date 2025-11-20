@@ -2,7 +2,7 @@ const Asset = require('../models/Asset');
 const NetworkDevice = require('../models/Device');
 const ScanResult = require('../models/ScanResult');
 const Vulnerability = require('../models/Vulnerability');
-const { runNmapScan, runBatchScan, getScanStats, validateIP, pingTest } = require('../services/scannerService');
+const { runNmapScan, runBatchScan, getScanStats, validateIP, pingTest, enhancedConnectivityTest } = require('../services/scannerService');
 const progressTracker = require('../services/scanProgress');
 
 /**
@@ -834,21 +834,75 @@ exports.getScanProgress = (req, res) => {
 };
 
 exports.testConnectivity = async (req, res) => {
+  // try {
+  //   const { assetId } = req.params;
+  //   const asset = await Asset.findById(assetId);
+  //   if (!asset) {
+  //     return res.status(404).json({ message: 'Asset not found' });
+  //   }
+  //   const isReachable = await pingTest(asset.ip);
+  //   res.json({
+  //     success: true,
+  //     asset: {
+  //       id: asset._id,
+  //       name: asset.name,
+  //       ip: asset.ip
+  //     },
+  //     reachable: isReachable,
+  //     testedAt: new Date()
+  //   });
+  // } catch (error) {
+  //   console.error('Connectivity test error:', error);
+  //   res.status(500).json({ 
+  //     success: false,
+  //     message: 'Connectivity test failed',
+  //     error: error.message 
+  //   });
+  // }
   try {
     const { assetId } = req.params;
-    const asset = await Asset.findById(assetId);
-    if (!asset) {
-      return res.status(404).json({ message: 'Asset not found' });
+    
+    // Try to find as asset first
+    let target = await Asset.findById(assetId);
+    let targetType = 'asset';
+    
+    // If not found as asset, try as device
+    if (!target) {
+      target = await NetworkDevice.findById(assetId);
+      targetType = 'device';
     }
-    const isReachable = await pingTest(asset.ip);
+    
+    if (!target) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Target not found' 
+      });
+    }
+
+    if (!validateIP(target.ip)) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Invalid IP address format' 
+      });
+    }
+
+    console.log(`Testing connectivity for ${target.name} (${target.ip})...`);
+    
+    // Use enhanced connectivity test
+    const connectivityResult = await enhancedConnectivityTest(target.ip);
+    
+    console.log(`Connectivity result for ${target.name}:`, connectivityResult);
+
     res.json({
       success: true,
-      asset: {
-        id: asset._id,
-        name: asset.name,
-        ip: asset.ip
+      target: {
+        id: target._id,
+        name: target.name,
+        ip: target.ip,
+        type: targetType
       },
-      reachable: isReachable,
+      reachable: connectivityResult.reachable,
+      method: connectivityResult.method,
       testedAt: new Date()
     });
   } catch (error) {
@@ -915,6 +969,83 @@ exports.runBatchScan = async (req, res) => {
     res.status(500).json({ 
       success: false,
       message: 'Batch scan failed',
+      error: error.message 
+    });
+  }
+};
+
+// Add this new endpoint for bulk connectivity testing
+exports.testBulkConnectivity = async (req, res) => {
+  try {
+    const { targetIds } = req.body;
+    
+    if (!targetIds || !Array.isArray(targetIds) || targetIds.length === 0) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Target IDs array is required' 
+      });
+    }
+
+    console.log(`Testing connectivity for ${targetIds.length} targets...`);
+    
+    const results = [];
+    
+    for (const targetId of targetIds) {
+      try {
+        // Try asset first
+        let target = await Asset.findById(targetId);
+        let targetType = 'asset';
+        
+        if (!target) {
+          target = await NetworkDevice.findById(targetId);
+          targetType = 'device';
+        }
+        
+        if (!target) {
+          results.push({
+            id: targetId,
+            reachable: false,
+            error: 'Target not found'
+          });
+          continue;
+        }
+
+        const connectivityResult = await enhancedConnectivityTest(target.ip);
+        
+        results.push({
+          id: target._id,
+          name: target.name,
+          ip: target.ip,
+          type: targetType,
+          reachable: connectivityResult.reachable,
+          method: connectivityResult.method,
+          testedAt: new Date()
+        });
+      } catch (error) {
+        results.push({
+          id: targetId,
+          reachable: false,
+          error: error.message
+        });
+      }
+    }
+
+    const reachableCount = results.filter(r => r.reachable).length;
+    
+    res.json({
+      success: true,
+      summary: {
+        total: targetIds.length,
+        reachable: reachableCount,
+        unreachable: targetIds.length - reachableCount
+      },
+      results
+    });
+  } catch (error) {
+    console.error('Bulk connectivity test error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Bulk connectivity test failed',
       error: error.message 
     });
   }
