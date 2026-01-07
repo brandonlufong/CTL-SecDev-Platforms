@@ -185,7 +185,7 @@ const ScanResultsModal = ({
                         <Col xs={6}>
                           <div className="text-center mb-3">
                             <h4 className="text-warning">{statistics.totalVulnerabilities}</h4>
-                            <small className="text-muted">Vulnerabilities</small>
+                            <small className="text-muted">New Vulnerabilities</small>
                           </div>
                         </Col>
                       </Row>

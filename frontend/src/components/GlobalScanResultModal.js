@@ -383,7 +383,7 @@ const GlobalScanResultModal = () => {
                 <strong>Open Ports:</strong> {summary.openPorts}
               </div>
               <div className="col-md-3">
-                <strong>Vulnerabilities:</strong> {summary.totalVulnerabilities}
+                <strong>New Vulnerabilities:</strong> {summary.totalVulnerabilities}
               </div>
               <div className="col-md-3">
                 <strong>Risk Level:</strong> <Badge bg="warning">{summary.riskLevel || 'Medium'}</Badge>
