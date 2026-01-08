@@ -8,6 +8,7 @@ const execAsync = promisify(exec);
 /**
  * Enhanced Scanner Service with comprehensive vulnerability detection
  * Cross-platform compatible with improved stability and realistic timeouts
+ * FIXED: Privilege detection, NSE script issues, and includes ALL port states (open/closed/filtered)
  */
 class ScannerService {
   constructor() {
@@ -78,27 +79,47 @@ class ScannerService {
   }
 
   /**
-   * Build cross-platform compatible nmap command with realistic scan parameters
+   * Check if we have elevated privileges - FIXED VERSION
+   */
+  hasElevatedPrivileges() {
+    if (this.isWindows) {
+      // On Windows, we can't easily check, so assume false
+      // User must run as Administrator manually
+      return false;
+    } else {
+      // On Unix systems, check if running as root (UID 0)
+      try {
+        return process.getuid && process.getuid() === 0;
+      } catch (e) {
+        return false;
+      }
+    }
+  }
+
+  /**
+   * Build cross-platform compatible nmap command - FIXED VERSION
+   * NOW INCLUDES: --open flag REMOVED to show ALL port states (open/closed/filtered)
    */
   buildNmapCommand(ip, scanType, includeVulnScripts) {
     let baseCommand = 'nmap';
     let options = [];
+
+    // Check if we have privileges - FIXED
+    const hasPrivileges = this.hasElevatedPrivileges();
 
     // Common options for all scans
     options.push('-Pn'); // Skip ping (works better across firewalls)
     options.push('-sV'); // Version detection
     options.push('--version-intensity', '5'); // Reduced from 7 for speed
     options.push('-oX', '-'); // XML output to stdout
+    // IMPORTANT: NO --open flag! We want ALL port states (open, closed, filtered)
 
-    // Handle privileged scan requirements
-    const privilegedScan = this.requiresPrivileges(scanType);
-    
     switch (scanType) {
       case 'quick':
         // Quick scan: Top 100 ports, fast
         options.push('-F'); // Fast mode (top 100 ports)
-        if (privilegedScan) {
-          options.push('-sS'); // SYN scan
+        if (hasPrivileges) {
+          options.push('-sS'); // SYN scan (requires root)
         } else {
           options.push('-sT'); // TCP connect scan (no privileges needed)
         }
@@ -107,13 +128,15 @@ class ScannerService {
 
       case 'comprehensive':
         // Comprehensive scan: Top 10000 ports (realistic, not all 65535)
-        if (privilegedScan) {
-          options.push('-sS'); // SYN scan
+        if (hasPrivileges) {
+          options.push('-sS'); // SYN scan (requires root)
         } else {
-          options.push('-sT'); // TCP connect scan
+          options.push('-sT'); // TCP connect scan (no privileges needed)
         }
         options.push('--top-ports', '10000'); // Top 10000 ports instead of all 65535
-        options.push('-O'); // OS detection (lighter than -A)
+        if (hasPrivileges) {
+          options.push('-O'); // OS detection (requires root)
+        }
         options.push('-T4'); // Aggressive timing
         options.push('--max-retries', '2'); // Prevent hanging on slow ports
         options.push('--host-timeout', '1500s'); // 25 minute per-host timeout
@@ -122,11 +145,11 @@ class ScannerService {
 
       case 'stealth':
         // Stealth scan: Top 1000 ports, slow and careful
-        if (privilegedScan) {
-          options.push('-sS'); // SYN scan (stealthy)
+        if (hasPrivileges) {
+          options.push('-sS'); // SYN scan (stealthy, requires root)
         } else {
           options.push('-sT'); // Fall back to TCP connect
-          console.warn('Stealth scan requires elevated privileges. Using TCP connect scan instead.');
+          console.warn('Stealth scan works best with root privileges. Using TCP connect scan.');
         }
         options.push('-T2'); // Polite timing (slower, stealthier)
         options.push('--top-ports', '1000');
@@ -137,11 +160,15 @@ class ScannerService {
 
       case 'udp':
         // UDP scan: Top 100 UDP ports (UDP is inherently slow)
-        if (privilegedScan) {
-          options.push('-sU'); // UDP scan (requires privileges)
-        } else {
-          throw new Error('UDP scan requires elevated privileges (run as root/administrator)');
+        if (!hasPrivileges) {
+          throw new Error(
+            'UDP scan requires root privileges. Solutions:\n' +
+            '1. Run with sudo: sudo node your-app.js\n' +
+            '2. Grant capabilities: sudo setcap cap_net_raw+eip $(which node)\n' +
+            '3. Use a different scan type like "quick"'
+          );
         }
+        options.push('-sU'); // UDP scan (requires privileges)
         options.push('--top-ports', '100'); // Only top 100 UDP ports
         options.push('-T4');
         options.push('--max-retries', '1'); // UDP is slow, limit retries
@@ -151,7 +178,7 @@ class ScannerService {
 
       case 'vulnerability':
         // Vulnerability scan: Top 1000 ports with vuln scripts
-        if (privilegedScan) {
+        if (hasPrivileges) {
           options.push('-sS');
         } else {
           options.push('-sT');
@@ -159,8 +186,9 @@ class ScannerService {
         options.push('--top-ports', '1000');
         options.push('-T4');
         if (includeVulnScripts) {
-          // Use safer script categories to prevent crashes
-          options.push('--script', 'vuln,safe');
+          // Use safer script categories to prevent openssl crashes
+          // Exclude problematic scripts that require openssl library
+          options.push('--script', 'vuln and safe and not (http-vuln-cve2014-3704 or ssl*)');
           options.push('--script-timeout', '180s'); // 3 minute script timeout
         }
         options.push('--max-retries', '2');
@@ -168,7 +196,7 @@ class ScannerService {
 
       default:
         // Default: Top 1000 ports
-        if (privilegedScan) {
+        if (hasPrivileges) {
           options.push('-sS');
         } else {
           options.push('-sT');
@@ -177,9 +205,10 @@ class ScannerService {
         options.push('-T4');
     }
 
-    // Add vulnerability scripts for non-vulnerability scans if requested
+    // Add safer vulnerability scripts for non-vulnerability scans if requested
     if (includeVulnScripts && scanType !== 'vulnerability' && scanType !== 'udp') {
-      options.push('--script', 'vulners');
+      // Use more reliable scripts that don't require openssl
+      options.push('--script', 'banner,http-title,http-headers');
       options.push('--script-timeout', '120s');
     }
 
@@ -190,25 +219,11 @@ class ScannerService {
   }
 
   /**
-   * Check if scan type requires elevated privileges
-   */
-  requiresPrivileges(scanType) {
-    // On Windows, check if running as admin; on Unix, check if root
-    if (this.isWindows) {
-      // Windows admin check would require additional module
-      // For now, assume privileges and let nmap fallback
-      return true;
-    } else {
-      return process.getuid && process.getuid() === 0;
-    }
-  }
-
-  /**
-   * Execute nmap command with proper error handling and progress tracking
+   * Execute nmap command with proper error handling - FIXED VERSION
    */
   executeNmapCommand(command, timeout, onProgress) {
     return new Promise((resolve, reject) => {
-      // Increase buffer size for large scans
+      // Increase buffer size for large scans (especially with closed ports)
       const maxBuffer = 1024 * 1024 * 100; // 100MB buffer
 
       const childProcess = exec(command, {
@@ -222,13 +237,31 @@ class ScannerService {
           if (error.killed && error.signal === 'SIGTERM') {
             reject(new Error(`Scan timeout after ${timeout / 1000} seconds. The scan took too long. Try: 1) Quick scan for faster results, 2) Check network connectivity, 3) Verify target is reachable.`));
           } else if (error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') {
-            reject(new Error('Scan output exceeded buffer size. Results too large.'));
+            reject(new Error('Scan output exceeded buffer size. Results too large. Try scanning fewer ports or use --open flag manually.'));
           } else {
-            // Check for specific nmap errors
+            // Check for specific nmap errors - ENHANCED
             const errorMsg = stderr || error.message;
-            if (errorMsg.includes('requires root privileges') || errorMsg.includes('Administrator')) {
-              reject(new Error('This scan type requires elevated privileges. Run as root/administrator or use quick scan.'));
-            } else if (errorMsg.includes('invalid option')) {
+            
+            if (errorMsg.includes('requires root privileges') || 
+                errorMsg.includes('requires elevated privileges') ||
+                errorMsg.includes('Administrator')) {
+              reject(new Error(
+                'This scan requires root/admin privileges. Solutions:\n' +
+                '1. Run with sudo: sudo node your-app.js\n' +
+                '2. Use "quick" scan type (doesn\'t require root)\n' +
+                '3. Grant capabilities: sudo setcap cap_net_raw+eip $(which node)'
+              ));
+            } 
+            else if (errorMsg.includes('module \'openssl\' not found') || 
+                     errorMsg.includes('NSE: Failed to load') ||
+                     errorMsg.includes('nselib/openssl.lua')) {
+              reject(new Error(
+                'Nmap NSE scripts missing dependencies. Solutions:\n' +
+                '1. Reinstall nmap: sudo apt-get install --reinstall nmap nmap-common\n' +
+                '2. Or disable vulnerability scripts in scan options'
+              ));
+            }
+            else if (errorMsg.includes('invalid option')) {
               reject(new Error(`Invalid nmap option. Your nmap version may not support all features.`));
             } else if (errorMsg.includes('Failed to resolve')) {
               reject(new Error(`Failed to resolve hostname. Please check the IP address or hostname.`));
@@ -302,6 +335,7 @@ class ScannerService {
 
   /**
    * Enhance scan results with vulnerability analysis
+   * NOW PROCESSES ALL PORTS including closed and filtered ones
    */
   async enhanceResultsWithVulnerabilities(scanResults, targetIP, onProgress) {
     const enhancedResults = [];
@@ -316,11 +350,27 @@ class ScannerService {
       const result = scanResults[i];
       if (onProgress) {
         const progress = 80 + Math.floor((i / totalResults) * 15);
-        onProgress(progress, `Analyzing vulnerabilities for port ${result.port}...`);
+        onProgress(progress, `Analyzing port ${result.port} (${result.state})...`);
       }
 
       try {
-        const vulnAnalysis = await vulnerabilityDetection.analyzeScan(result);
+        // Only run vulnerability detection on OPEN ports
+        // But still include closed/filtered ports in results
+        let vulnAnalysis;
+        if (result.state === 'open') {
+          vulnAnalysis = await vulnerabilityDetection.analyzeScan(result);
+        } else {
+          // For closed/filtered ports, provide minimal vulnerability info
+          vulnAnalysis = {
+            vulnerabilityScore: 0,
+            vulnerabilities: [],
+            detectionDetails: [],
+            confidence: 0,
+            detectionMethods: [],
+            scanEnhancement: `Port is ${result.state} - no vulnerabilities to analyze`
+          };
+        }
+
         const enhancedResult = {
           ...result,
           targetIP,
@@ -339,7 +389,7 @@ class ScannerService {
         };
         enhancedResults.push(enhancedResult);
       } catch (error) {
-        console.error(`Error analyzing vulnerabilities for port ${result.port}:`, error);
+        console.error(`Error analyzing port ${result.port}:`, error);
         enhancedResults.push({
           ...result,
           targetIP,
@@ -352,6 +402,15 @@ class ScannerService {
         });
       }
     }
+
+    // Log summary of port states
+    const summary = {
+      total: enhancedResults.length,
+      open: enhancedResults.filter(r => r.state === 'open').length,
+      closed: enhancedResults.filter(r => r.state === 'closed').length,
+      filtered: enhancedResults.filter(r => r.state === 'filtered').length
+    };
+    console.log(`Port scan summary: ${summary.open} open, ${summary.closed} closed, ${summary.filtered} filtered (${summary.total} total)`);
 
     return enhancedResults;
   }
@@ -476,7 +535,7 @@ class ScannerService {
   }
 
   /**
-   * Get current scan statistics
+   * Get current scan statistics - ENHANCED
    */
   getScanStats() {
     return {
@@ -484,7 +543,30 @@ class ScannerService {
       maxConcurrentScans: this.maxConcurrentScans,
       canStartNewScan: this.activeScanCount < this.maxConcurrentScans,
       platform: this.platform,
-      hasPrivileges: this.requiresPrivileges('comprehensive')
+      hasPrivileges: this.hasElevatedPrivileges(),
+      privilegeInfo: this.getPrivilegeInfo()
+    };
+  }
+
+  /**
+   * Get privilege information and recommendations - NEW
+   */
+  getPrivilegeInfo() {
+    const hasPrivileges = this.hasElevatedPrivileges();
+    
+    return {
+      hasPrivileges,
+      message: hasPrivileges 
+        ? 'Running with elevated privileges - all scan types available'
+        : 'Running without privileges - some scan types limited',
+      recommendations: hasPrivileges ? [] : [
+        'Run with sudo for full functionality: sudo node your-app.js',
+        'Or use "quick" scan type which works without root',
+        'Or grant capabilities: sudo setcap cap_net_raw+eip $(which node)'
+      ],
+      availableScanTypes: hasPrivileges 
+        ? ['quick', 'comprehensive', 'stealth', 'udp', 'vulnerability']
+        : ['quick', 'comprehensive (limited)', 'stealth (limited)', 'vulnerability (limited)']
     };
   }
 

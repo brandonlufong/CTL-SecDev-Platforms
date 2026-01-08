@@ -7,7 +7,7 @@ const config = {
   // Server Configuration
   server: {
     port: process.env.PORT || 5000,
-    host: process.env.HOST || '172.20.19.172',
+    host: process.env.HOST || 'localhost',
     nodeEnv: process.env.NODE_ENV || 'development',
   },
 
@@ -24,7 +24,7 @@ const config = {
 
   // CORS Configuration
   cors: {
-    origin: process.env.CORS_ORIGIN || 'http://172.20.19.172:3001',
+    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
     credentials: true,
   },
 
