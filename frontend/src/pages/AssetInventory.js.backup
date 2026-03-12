@@ -1,0 +1,872 @@
+import React, { useState, useEffect, useContext } from 'react';
+import {
+  Container,
+  Row,
+  Col,
+  Card,
+  Button,
+  Badge,
+  Alert,
+  Spinner,
+  Table,
+  Modal,
+  Form,
+  Dropdown,
+  ProgressBar,
+  Tab,
+  Tabs,
+  Nav,
+  NavItem,
+  NavLink
+} from 'react-bootstrap';
+import {
+  FaServer,
+  FaNetworkWired,
+  FaDatabase,
+  FaDesktop,
+  FaCloud,
+  FaSearch,
+  FaFilter,
+  FaPlus,
+  FaSync,
+  FaExclamationTriangle,
+  FaCheckCircle,
+  FaTimesCircle,
+  FaClock,
+  FaGlobe,
+  FaTags,
+  FaChartBar,
+  FaMapMarkedAlt,
+  FaShieldAlt,
+  FaCog
+} from 'react-icons/fa';
+import { AuthContext } from '../context/AuthContext';
+import config from '../config';
+
+const AssetInventory = () => {
+  const { token } = useContext(AuthContext);
+  
+  // State management
+  const [loading, setLoading] = useState(true);
+  const [dashboardData, setDashboardData] = useState(null);
+  const [assets, setAssets] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [tags, setTags] = useState([]);
+  const [selectedAsset, setSelectedAsset] = useState(null);
+  const [showClassificationModal, setShowClassificationModal] = useState(false);
+  const [showDiscoveryModal, setShowDiscoveryModal] = useState(false);
+  const [discoveryStatus, setDiscoveryStatus] = useState(null);
+  const [monitoringStatus, setMonitoringStatus] = useState(null);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [activeTab, setActiveTab] = useState('overview');
+
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filters, setFilters] = useState({
+    type: '',
+    status: '',
+    category: '',
+    tags: [],
+    criticality: '',
+    complianceStatus: '',
+    country: '',
+    exposure: ''
+  });
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+
+  // Classification form state
+  const [classificationForm, setClassificationForm] = useState({
+    category: '',
+    tags: [],
+    criticality: 'medium',
+    businessImpact: 'medium',
+    technicalImpact: 'medium',
+    notes: ''
+  });
+
+  // Discovery form state
+  const [discoveryForm, setDiscoveryForm] = useState({
+    networkRange: '',
+    ports: '22,23,53,80,135,139,443,445,993,995,1723,3389,5900',
+    timeout: 5000,
+    maxConcurrent: 50
+  });
+
+  // Fetch dashboard data
+  const fetchDashboardData = async () => {
+    try {
+      const response = await fetch(`${config.API_BASE_URL}/api/inventory/dashboard`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setDashboardData(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch dashboard data:', error);
+    }
+  };
+
+  // Fetch assets with filters
+  const fetchAssets = async () => {
+    try {
+      const params = new URLSearchParams();
+      
+      if (searchQuery) params.append('query', searchQuery);
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value && (Array.isArray(value) ? value.length > 0 : true)) {
+          if (Array.isArray(value)) {
+            value.forEach(v => params.append(key, v));
+          } else {
+            params.append(key, value);
+          }
+        }
+      });
+
+      const response = await fetch(`${config.API_BASE_URL}/api/inventory/search?${params}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setAssets(data.assets || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch assets:', error);
+    }
+  };
+
+  // Fetch categories and tags
+  const fetchCategoriesAndTags = async () => {
+    try {
+      const [categoriesRes, tagsRes] = await Promise.all([
+        fetch(`${config.API_BASE_URL}/api/inventory/categories`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        fetch(`${config.API_BASE_URL}/api/inventory/tags`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
+
+      if (categoriesRes.ok) {
+        const categoriesData = await categoriesRes.json();
+        setCategories(categoriesData);
+      }
+
+      if (tagsRes.ok) {
+        const tagsData = await tagsRes.json();
+        setTags(tagsData);
+      }
+    } catch (error) {
+      console.error('Failed to fetch categories and tags:', error);
+    }
+  };
+
+  // Fetch discovery status
+  const fetchDiscoveryStatus = async () => {
+    try {
+      const response = await fetch(`${config.API_BASE_URL}/api/inventory/discovery/status`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setDiscoveryStatus(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch discovery status:', error);
+    }
+  };
+
+  // Start asset discovery
+  const startDiscovery = async () => {
+    try {
+      setError('');
+      setSuccess('');
+      
+      const response = await fetch(`${config.API_BASE_URL}/api/inventory/discovery/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(discoveryForm)
+      });
+
+      if (response.ok) {
+        setSuccess('Asset discovery started successfully');
+        setShowDiscoveryModal(false);
+        // Poll for status updates
+        const statusInterval = setInterval(async () => {
+          await fetchDiscoveryStatus();
+          if (discoveryStatus && !discoveryStatus.isScanning) {
+            clearInterval(statusInterval);
+            fetchDashboardData();
+            fetchAssets();
+          }
+        }, 5000);
+      } else {
+        const errorData = await response.json();
+        setError(errorData.message || 'Failed to start discovery');
+      }
+    } catch (error) {
+      setError('Failed to start discovery');
+      console.error('Discovery error:', error);
+    }
+  };
+
+  // Update asset classification
+  const updateAssetClassification = async () => {
+    try {
+      setError('');
+      setSuccess('');
+
+      const response = await fetch(`${config.API_BASE_URL}/api/inventory/classification/${selectedAsset._id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(classificationForm)
+      });
+
+      if (response.ok) {
+        setSuccess('Asset classification updated successfully');
+        setShowClassificationModal(false);
+        setSelectedAsset(null);
+        fetchAssets();
+        fetchDashboardData();
+      } else {
+        const errorData = await response.json();
+        setError(errorData.message || 'Failed to update classification');
+      }
+    } catch (error) {
+      setError('Failed to update classification');
+      console.error('Classification error:', error);
+    }
+  };
+
+  // Auto-classify assets
+  const autoClassifyAssets = async () => {
+    try {
+      setError('');
+      setSuccess('');
+
+      const response = await fetch(`${config.API_BASE_URL}/api/inventory/classification/auto-classify`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSuccess(`Auto-classification completed: ${data.results.classified} assets classified`);
+        fetchAssets();
+        fetchDashboardData();
+      } else {
+        const errorData = await response.json();
+        setError(errorData.message || 'Failed to auto-classify assets');
+      }
+    } catch (error) {
+      setError('Failed to auto-classify assets');
+      console.error('Auto-classification error:', error);
+    }
+  };
+
+  // Initialize data
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      await Promise.all([
+        fetchDashboardData(),
+        fetchCategoriesAndTags(),
+        fetchAssets(),
+        fetchDiscoveryStatus()
+      ]);
+      setLoading(false);
+    };
+
+    loadData();
+
+    // Set up real-time updates
+    const interval = setInterval(() => {
+      fetchDashboardData();
+      fetchDiscoveryStatus();
+    }, 30000); // Update every 30 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Update assets when filters change
+  useEffect(() => {
+    fetchAssets();
+  }, [searchQuery, filters]);
+
+  // Render overview dashboard
+  const renderOverview = () => {
+    if (!dashboardData) return null;
+
+    const { overview, assetTypes, classification, compliance, geoDistribution } = dashboardData;
+
+    return (
+      <>
+        {/* Overview Cards */}
+        <Row className="mb-4">
+          <Col md={3}>
+            <Card className="border-0 shadow-sm">
+              <Card.Body className="text-center">
+                <FaServer className="text-primary mb-2" size={32} />
+                <h3 className="mb-1">{overview.totalAssets}</h3>
+                <p className="text-muted mb-0">Total Assets</p>
+              </Card.Body>
+            </Card>
+          </Col>
+          <Col md={3}>
+            <Card className="border-0 shadow-sm">
+              <Card.Body className="text-center">
+                <FaCheckCircle className="text-success mb-2" size={32} />
+                <h3 className="mb-1">{overview.onlineAssets}</h3>
+                <p className="text-muted mb-0">Online</p>
+              </Card.Body>
+            </Card>
+          </Col>
+          <Col md={3}>
+            <Card className="border-0 shadow-sm">
+              <Card.Body className="text-center">
+                <FaTimesCircle className="text-danger mb-2" size={32} />
+                <h3 className="mb-1">{overview.offlineAssets}</h3>
+                <p className="text-muted mb-0">Offline</p>
+              </Card.Body>
+            </Card>
+          </Col>
+          <Col md={3}>
+            <Card className="border-0 shadow-sm">
+              <Card.Body className="text-center">
+                <FaClock className="text-warning mb-2" size={32} />
+                <h3 className="mb-1">{overview.maintenanceAssets}</h3>
+                <p className="text-muted mb-0">Maintenance</p>
+              </Card.Body>
+            </Card>
+          </Col>
+        </Row>
+
+        {/* Charts and Stats */}
+        <Row className="mb-4">
+          <Col md={6}>
+            <Card className="border-0 shadow-sm">
+              <Card.Header className="bg-white">
+                <h6 className="mb-0">Asset Types</h6>
+              </Card.Header>
+              <Card.Body>
+                {assetTypes.map((type, index) => (
+                  <div key={index} className="d-flex justify-content-between align-items-center mb-2">
+                    <span>{type._id}</span>
+                    <Badge bg="primary">{type.count}</Badge>
+                  </div>
+                ))}
+              </Card.Body>
+            </Card>
+          </Col>
+          <Col md={6}>
+            <Card className="border-0 shadow-sm">
+              <Card.Header className="bg-white">
+                <h6 className="mb-0">Compliance Status</h6>
+              </Card.Header>
+              <Card.Body>
+                {compliance.map((status, index) => (
+                  <div key={index} className="d-flex justify-content-between align-items-center mb-2">
+                    <span>{status._id}</span>
+                    <Badge bg={status._id === 'compliant' ? 'success' : status._id === 'non-compliant' ? 'danger' : 'warning'}>
+                      {status.count}
+                    </Badge>
+                  </div>
+                ))}
+              </Card.Body>
+            </Card>
+          </Col>
+        </Row>
+
+        {/* Geographic Distribution */}
+        <Row className="mb-4">
+          <Col md={12}>
+            <Card className="border-0 shadow-sm">
+              <Card.Header className="bg-white">
+                <h6 className="mb-0">
+                  <FaGlobe className="me-2" />
+                  Geographic Distribution
+                </h6>
+              </Card.Header>
+              <Card.Body>
+                <Row>
+                  {geoDistribution.map((country, index) => (
+                    <Col md={3} key={index} className="text-center mb-3">
+                      <div className="d-flex align-items-center justify-content-center">
+                        <FaMapMarkedAlt className="text-primary me-2" />
+                        <div>
+                          <strong>{country._id}</strong>
+                          <div className="text-muted">{country.count} assets</div>
+                        </div>
+                      </div>
+                    </Col>
+                  ))}
+                </Row>
+              </Card.Body>
+            </Card>
+          </Col>
+        </Row>
+      </>
+    );
+  };
+
+  // Render assets table
+  const renderAssetsTable = () => {
+    return (
+      <>
+        {/* Search and Filter Bar */}
+        <Row className="mb-3">
+          <Col md={6}>
+            <Form.Control
+              type="text"
+              placeholder="Search assets..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </Col>
+          <Col md={6} className="text-end">
+            <Button
+              variant="outline-secondary"
+              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+              className="me-2"
+            >
+              <FaFilter className="me-2" />
+              Advanced Filters
+            </Button>
+            <Button
+              variant="outline-primary"
+              onClick={() => setShowDiscoveryModal(true)}
+              className="me-2"
+            >
+              <FaSearch className="me-2" />
+              Discover Assets
+            </Button>
+            <Button
+              variant="outline-success"
+              onClick={autoClassifyAssets}
+            >
+              <FaTags className="me-2" />
+              Auto-Classify
+            </Button>
+          </Col>
+        </Row>
+
+        {/* Advanced Filters */}
+        {showAdvancedFilters && (
+          <Card className="mb-3">
+            <Card.Body>
+              <Row>
+                <Col md={3}>
+                  <Form.Label>Type</Form.Label>
+                  <Form.Select
+                    value={filters.type}
+                    onChange={(e) => setFilters({ ...filters, type: e.target.value })}
+                  >
+                    <option value="">All Types</option>
+                    <option value="Server">Server</option>
+                    <option value="Database">Database</option>
+                    <option value="Application">Application</option>
+                    <option value="Network Device">Network Device</option>
+                  </Form.Select>
+                </Col>
+                <Col md={3}>
+                  <Form.Label>Status</Form.Label>
+                  <Form.Select
+                    value={filters.status}
+                    onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                  >
+                    <option value="">All Statuses</option>
+                    <option value="Online">Online</option>
+                    <option value="Offline">Offline</option>
+                    <option value="Maintenance">Maintenance</option>
+                  </Form.Select>
+                </Col>
+                <Col md={3}>
+                  <Form.Label>Criticality</Form.Label>
+                  <Form.Select
+                    value={filters.criticality}
+                    onChange={(e) => setFilters({ ...filters, criticality: e.target.value })}
+                  >
+                    <option value="">All Criticality</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                  </Form.Select>
+                </Col>
+                <Col md={3}>
+                  <Form.Label>Exposure</Form.Label>
+                  <Form.Select
+                    value={filters.exposure}
+                    onChange={(e) => setFilters({ ...filters, exposure: e.target.value })}
+                  >
+                    <option value="">All Exposure</option>
+                    <option value="Public">Public</option>
+                    <option value="Private">Private</option>
+                  </Form.Select>
+                </Col>
+              </Row>
+            </Card.Body>
+          </Card>
+        )}
+
+        {/* Assets Table */}
+        <Card className="border-0 shadow-sm">
+          <Card.Header className="bg-white">
+            <h6 className="mb-0">Assets ({assets.length})</h6>
+          </Card.Header>
+          <Card.Body>
+            <Table responsive hover>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>IP Address</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Category</th>
+                  <th>Criticality</th>
+                  <th>Compliance</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {assets.map((asset) => (
+                  <tr key={asset._id}>
+                    <td>
+                      <div className="d-flex align-items-center">
+                        {asset.type === 'Server' && <FaServer className="me-2 text-primary" />}
+                        {asset.type === 'Database' && <FaDatabase className="me-2 text-danger" />}
+                        {asset.type === 'Application' && <FaDesktop className="me-2 text-success" />}
+                        {asset.type === 'Network Device' && <FaNetworkWired className="me-2 text-info" />}
+                        {asset.name}
+                      </div>
+                    </td>
+                    <td>{asset.ip}</td>
+                    <td>{asset.type}</td>
+                    <td>
+                      <Badge
+                        bg={asset.status === 'Online' ? 'success' : asset.status === 'Offline' ? 'danger' : 'warning'}
+                      >
+                        {asset.status}
+                      </Badge>
+                    </td>
+                    <td>
+                      {asset.classification?.category ? (
+                        <Badge bg="secondary">{asset.classification.category.name}</Badge>
+                      ) : (
+                        <span className="text-muted">Unclassified</span>
+                      )}
+                    </td>
+                    <td>
+                      {asset.classification?.criticality && (
+                        <Badge
+                          bg={
+                            asset.classification.criticality === 'critical' ? 'danger' :
+                            asset.classification.criticality === 'high' ? 'warning' :
+                            asset.classification.criticality === 'medium' ? 'info' : 'secondary'
+                          }
+                        >
+                          {asset.classification.criticality}
+                        </Badge>
+                      )}
+                    </td>
+                    <td>
+                      {asset.classification?.complianceStatus && (
+                        <Badge
+                          bg={
+                            asset.classification.complianceStatus === 'compliant' ? 'success' :
+                            asset.classification.complianceStatus === 'non-compliant' ? 'danger' : 'warning'
+                          }
+                        >
+                          {asset.classification.complianceStatus}
+                        </Badge>
+                      )}
+                    </td>
+                    <td>
+                      <Button
+                        size="sm"
+                        variant="outline-primary"
+                        onClick={() => {
+                          setSelectedAsset(asset);
+                          setShowClassificationModal(true);
+                        }}
+                      >
+                        Classify
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </Card.Body>
+        </Card>
+      </>
+    );
+  };
+
+  // Render discovery modal
+  const renderDiscoveryModal = () => (
+    <Modal show={showDiscoveryModal} onHide={() => setShowDiscoveryModal(false)} size="lg">
+      <Modal.Header closeButton>
+        <Modal.Title>
+          <FaSearch className="me-2" />
+          Asset Discovery
+        </Modal.Title>
+      </Modal.Header>
+      <Modal.Body>
+        <Form>
+          <Form.Group className="mb-3">
+            <Form.Label>Network Range</Form.Label>
+            <Form.Control
+              type="text"
+              placeholder="e.g., 192.168.1.0/24"
+              value={discoveryForm.networkRange}
+              onChange={(e) => setDiscoveryForm({ ...discoveryForm, networkRange: e.target.value })}
+            />
+            <Form.Text className="text-muted">
+              Enter network range in CIDR notation (e.g., 192.168.1.0/24)
+            </Form.Text>
+          </Form.Group>
+          
+          <Row>
+            <Col md={6}>
+              <Form.Group className="mb-3">
+                <Form.Label>Ports to Scan</Form.Label>
+                <Form.Control
+                  type="text"
+                  value={discoveryForm.ports}
+                  onChange={(e) => setDiscoveryForm({ ...discoveryForm, ports: e.target.value })}
+                />
+              </Form.Group>
+            </Col>
+            <Col md={6}>
+              <Form.Group className="mb-3">
+                <Form.Label>Timeout (ms)</Form.Label>
+                <Form.Control
+                  type="number"
+                  value={discoveryForm.timeout}
+                  onChange={(e) => setDiscoveryForm({ ...discoveryForm, timeout: parseInt(e.target.value) })}
+                />
+              </Form.Group>
+            </Col>
+          </Row>
+
+          <Row>
+            <Col md={6}>
+              <Form.Group className="mb-3">
+                <Form.Label>Max Concurrent Scans</Form.Label>
+                <Form.Control
+                  type="number"
+                  value={discoveryForm.maxConcurrent}
+                  onChange={(e) => setDiscoveryForm({ ...discoveryForm, maxConcurrent: parseInt(e.target.value) })}
+                />
+              </Form.Group>
+            </Col>
+          </Row>
+
+          {discoveryStatus?.isScanning && (
+            <Alert variant="info">
+              <Spinner size="sm" className="me-2" />
+              Discovery scan in progress... {discoveryStatus.currentScan?.progress || 0}%
+            </Alert>
+          )}
+        </Form>
+      </Modal.Body>
+      <Modal.Footer>
+        <Button variant="secondary" onClick={() => setShowDiscoveryModal(false)}>
+          Cancel
+        </Button>
+        <Button variant="primary" onClick={startDiscovery} disabled={discoveryStatus?.isScanning}>
+          Start Discovery
+        </Button>
+      </Modal.Footer>
+    </Modal>
+  );
+
+  // Render classification modal
+  const renderClassificationModal = () => (
+    <Modal show={showClassificationModal} onHide={() => setShowClassificationModal(false)} size="lg">
+      <Modal.Header closeButton>
+        <Modal.Title>
+          <FaTags className="me-2" />
+          Classify Asset: {selectedAsset?.name}
+        </Modal.Title>
+      </Modal.Header>
+      <Modal.Body>
+        <Form>
+          <Row>
+            <Col md={6}>
+              <Form.Group className="mb-3">
+                <Form.Label>Category</Form.Label>
+                <Form.Select
+                  value={classificationForm.category}
+                  onChange={(e) => setClassificationForm({ ...classificationForm, category: e.target.value })}
+                >
+                  <option value="">Select Category</option>
+                  {categories.map((category) => (
+                    <option key={category._id} value={category._id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </Form.Select>
+              </Form.Group>
+            </Col>
+            <Col md={6}>
+              <Form.Group className="mb-3">
+                <Form.Label>Criticality</Form.Label>
+                <Form.Select
+                  value={classificationForm.criticality}
+                  onChange={(e) => setClassificationForm({ ...classificationForm, criticality: e.target.value })}
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </Form.Select>
+              </Form.Group>
+            </Col>
+          </Row>
+
+          <Row>
+            <Col md={6}>
+              <Form.Group className="mb-3">
+                <Form.Label>Business Impact</Form.Label>
+                <Form.Select
+                  value={classificationForm.businessImpact}
+                  onChange={(e) => setClassificationForm({ ...classificationForm, businessImpact: e.target.value })}
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </Form.Select>
+              </Form.Group>
+            </Col>
+            <Col md={6}>
+              <Form.Group className="mb-3">
+                <Form.Label>Technical Impact</Form.Label>
+                <Form.Select
+                  value={classificationForm.technicalImpact}
+                  onChange={(e) => setClassificationForm({ ...classificationForm, technicalImpact: e.target.value })}
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </Form.Select>
+              </Form.Group>
+            </Col>
+          </Row>
+
+          <Form.Group className="mb-3">
+            <Form.Label>Tags</Form.Label>
+            <Form.Select
+              multiple
+              value={classificationForm.tags}
+              onChange={(e) => setClassificationForm({ ...classificationForm, tags: Array.from(e.target.selectedOptions).map(opt => opt.value) })}
+            >
+              {tags.map((tag) => (
+                <option key={tag._id} value={tag._id}>
+                  {tag.name}
+                </option>
+              ))}
+            </Form.Select>
+          </Form.Group>
+
+          <Form.Group className="mb-3">
+            <Form.Label>Notes</Form.Label>
+            <Form.Control
+              as="textarea"
+              rows={3}
+              value={classificationForm.notes}
+              onChange={(e) => setClassificationForm({ ...classificationForm, notes: e.target.value })}
+            />
+          </Form.Group>
+        </Form>
+      </Modal.Body>
+      <Modal.Footer>
+        <Button variant="secondary" onClick={() => setShowClassificationModal(false)}>
+          Cancel
+        </Button>
+        <Button variant="primary" onClick={updateAssetClassification}>
+          Save Classification
+        </Button>
+      </Modal.Footer>
+    </Modal>
+  );
+
+  if (loading) {
+    return (
+      <div className="container mt-4" style={{ backgroundColor: '#F1F8FD', minHeight: '100vh' }}>
+        <div className="text-center py-5">
+          <Spinner animation="border" className="text-primary" />
+          <p className="text-muted mt-2">Loading Asset Inventory...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mt-4" style={{ backgroundColor: '#F1F8FD', minHeight: '100vh' }}>
+      {/* Header */}
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <div>
+          <h2 className="mb-1" style={{ color: '#1594EA', fontWeight: '600' }}>
+            <FaServer className="me-2" style={{ color: '#1594EA' }} />
+            Asset Inventory
+          </h2>
+          <p className="text-muted mb-0">Comprehensive asset management and monitoring</p>
+        </div>
+        <div className="d-flex gap-2">
+          <Button variant="outline-info" onClick={() => fetchDashboardData()}>
+            <FaSync className="me-2" />
+            Refresh
+          </Button>
+        </div>
+      </div>
+
+      {/* Alerts */}
+      {error && <Alert variant="danger" dismissible onClose={() => setError('')}>{error}</Alert>}
+      {success && <Alert variant="success" dismissible onClose={() => setSuccess('')}>{success}</Alert>}
+
+      {/* Navigation Tabs */}
+      <Tabs
+        activeKey={activeTab}
+        onSelect={(k) => setActiveTab(k)}
+        className="mb-4"
+      >
+        <Tab eventKey="overview" title="Overview">
+          {renderOverview()}
+        </Tab>
+        <Tab eventKey="assets" title="Assets">
+          {renderAssetsTable()}
+        </Tab>
+        <Tab eventKey="monitoring" title="Monitoring">
+          <Card className="border-0 shadow-sm">
+            <Card.Body className="text-center">
+              <FaShieldAlt className="text-primary mb-3" size={48} />
+              <h4>Real-time Monitoring</h4>
+              <p className="text-muted">Monitor asset health and performance in real-time</p>
+              <Button variant="primary">Enable Monitoring</Button>
+            </Card.Body>
+          </Card>
+        </Tab>
+      </Tabs>
+
+      {/* Modals */}
+      {renderDiscoveryModal()}
+      {renderClassificationModal()}
+    </div>
+  );
+};
+
+export default AssetInventory;

@@ -1,0 +1,63 @@
+{
+  "general": {
+    "platformName": "CAMTEL Security Platform",
+    "version": "2.0.0",
+    "environment": "production",
+    "timezone": "UTC",
+    "dateFormat": "MM/DD/YYYY",
+    "timeFormat": "24h",
+    "language": "en"
+  },
+  "security": {
+    "sessionTimeout": 30,
+    "passwordMinLength": 8,
+    "passwordRequireUppercase": true,
+    "passwordRequireNumbers": true,
+    "passwordRequireSpecialChars": true,
+    "maxLoginAttempts": 5,
+    "lockoutDuration": 15,
+    "enableTwoFactor": false,
+    "apiRateLimit": 100
+  },
+  "scanning": {
+    "defaultScanTimeout": 300,
+    "maxConcurrentScans": 5,
+    "scanResultsRetention": 90,
+    "autoScheduleScans": false,
+    "scanScheduleFrequency": "daily",
+    "enableVulnerabilityScanning": true,
+    "enablePortScanning": true,
+    "enableServiceDetection": true
+  },
+  "notifications": {
+    "emailEnabled": true,
+    "smtpHost": "",
+    "smtpPort": 587,
+    "smtpUsername": "",
+    "smtpUseTLS": true,
+    "emailFrom": "",
+    "emailAdmin": "",
+    "enableCriticalAlerts": true,
+    "enableWeeklyReports": false,
+    "enableMaintenanceAlerts": true
+  },
+  "performance": {
+    "enablePerformanceMonitoring": true,
+    "metricsRetention": 30,
+    "alertThresholdCPU": 80,
+    "alertThresholdMemory": 85,
+    "alertThresholdDisk": 90,
+    "enableAutoCleanup": true,
+    "cleanupInterval": 7
+  },
+  "backup": {
+    "enableAutoBackup": true,
+    "backupFrequency": "daily",
+    "backupRetention": 30,
+    "backupLocation": "/var/backups/camtel",
+    "compressBackups": true,
+    "encryptBackups": true,
+    "lastBackupTime": null,
+    "backupStatus": "idle"
+  }
+}

@@ -95,6 +95,22 @@ const TopNavbar = () => {
             >
               Network Devices
             </NavLink>
+
+            {(user?.role === 'admin' || user?.role === 'super_admin') && (
+              <NavLink
+                to="/admin"
+                className="nav-link"
+                style={({ isActive }) => ({
+                  color: isActive ? '#F0F9FF' : '#F0F9FF',
+                  backgroundColor: isActive ? '#0D6EBD' : 'transparent',
+                  borderRadius: '5px',
+                  padding: '0.5rem 1rem',
+                  margin: '0 0.3rem',
+                })}
+              >
+                Admin
+              </NavLink>
+            )}
           </Nav>
 
           <Nav>

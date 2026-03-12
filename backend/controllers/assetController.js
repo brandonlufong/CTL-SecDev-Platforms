@@ -27,6 +27,7 @@ const Asset = require('../models/Asset');
 const ping = require('ping');
 const isReachable = require('is-reachable'); // More reliable reachability check
 const net = require('net');
+const geoEnrichmentMiddleware = require('../middleware/geoEnrichment');
 
 // Get all assets
 exports.getAssets = async (req, res) => {
@@ -43,6 +44,11 @@ exports.createAsset = async (req, res) => {
   try {
     const newAsset = new Asset(req.body);
     await newAsset.save();
+    
+    // Enrich with geolocation data asynchronously (non-blocking)
+    geoEnrichmentMiddleware.enrichAsset(newAsset)
+      .catch(error => console.error('❌ Geo enrichment failed:', error));
+    
     res.status(201).json(newAsset);
   } catch (err) {
     console.error(err);
@@ -58,6 +64,13 @@ exports.updateAsset = async (req, res) => {
       runValidators: true,
     });
     if (!asset) return res.status(404).json({ message: 'Asset not found' });
+    
+    // Enrich with geolocation data if IP was updated
+    if (req.body.ip && req.body.ip !== asset.ip) {
+      geoEnrichmentMiddleware.enrichAsset(asset)
+        .catch(error => console.error('❌ Geo enrichment failed:', error));
+    }
+    
     res.json(asset);
   } catch (err) {
     console.error(err);
@@ -97,11 +110,79 @@ exports.searchAssets = async (req, res) => {
         { activeProtocols: { $elemMatch: { $regex: query, $options: 'i' } } },
         { wsType: { $regex: query, $options: 'i' } },
         { dbType: { $regex: query, $options: 'i' } },
+        // Add geolocation fields to search
+        { 'geoLocation.country': { $regex: query, $options: 'i' } },
+        { 'geoLocation.city': { $regex: query, $options: 'i' } },
+        { 'geoLocation.isp': { $regex: query, $options: 'i' } },
+        { 'geoLocation.asnOrganization': { $regex: query, $options: 'i' } },
       ],
     });
     res.json(results);
   } catch (err) {
     res.status(500).json({ message: 'Server error during search.' });
+  }
+};
+
+// Get assets by geolocation
+exports.getAssetsByLocation = async (req, res) => {
+  try {
+    const { country, city, isp } = req.query;
+    
+    const filter = {};
+    if (country) filter['geoLocation.country'] = country;
+    if (city) filter['geoLocation.city'] = city;
+    if (isp) filter['geoLocation.isp'] = isp;
+    
+    const assets = await Asset.find(filter).sort({ createdAt: -1 });
+    res.json(assets);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error while fetching assets by location.' });
+  }
+};
+
+// Get geolocation statistics
+exports.getGeoStats = async (req, res) => {
+  try {
+    const stats = await geoEnrichmentMiddleware.getGeoStats();
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error while fetching geolocation statistics.' });
+  }
+};
+
+// Bulk enrich assets with geolocation
+exports.bulkEnrichAssets = async (req, res) => {
+  try {
+    const assets = await Asset.find({
+      $or: [
+        { 'geoLocation.lastUpdated': { $exists: false } },
+        { 'geoLocation.country': 'Unknown' }
+      ]
+    });
+
+    if (assets.length === 0) {
+      return res.json({ message: 'All assets already have geolocation data', enriched: 0 });
+    }
+
+    const enrichedAssets = await geoEnrichmentMiddleware.enrichAssets(assets);
+    
+    res.json({ 
+      message: `Successfully enriched ${enrichedAssets.length} assets`, 
+      enriched: enrichedAssets.length 
+    });
+  } catch (err) {
+    console.error('Bulk enrichment failed:', err);
+    res.status(500).json({ message: 'Failed to bulk enrich assets.' });
+  }
+};
+
+// Update stale geolocation data
+exports.updateStaleGeoData = async (req, res) => {
+  try {
+    await geoEnrichmentMiddleware.updateStaleGeoData();
+    res.json({ message: 'Stale geolocation data updated successfully' });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to update stale geolocation data.' });
   }
 };
 

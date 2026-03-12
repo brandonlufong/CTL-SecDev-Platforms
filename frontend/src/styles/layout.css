@@ -1,0 +1,346 @@
+/* Main Layout Styles */
+.main-layout {
+  min-height: 100vh;
+  background-color: #F9FAFB;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Sidebar Styles */
+.sidebar {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.sidebar .main-menu-item {
+  transition: all 0.3s ease;
+}
+
+.sidebar .main-menu-item:hover {
+  background-color: #F3F4F6 !important;
+  color: #1594EA !important;
+  transform: scale(1.05);
+}
+
+.sidebar .main-menu-item.active {
+  background-color: #1594EA !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 12px rgba(21, 148, 234, 0.3);
+}
+
+/* Submenu Sidebar Styles */
+.submenu-sidebar {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.submenu-sidebar .submenu-item {
+  transition: all 0.3s ease;
+}
+
+.submenu-sidebar .submenu-item:hover {
+  background-color: #F3F4F6 !important;
+  color: #1594EA !important;
+  transform: translateX(4px);
+}
+
+.submenu-sidebar .submenu-item.active {
+  background-color: #EFF6FF !important;
+  color: #1594EA !important;
+  border-left: 3px solid #1594EA !important;
+}
+
+/* Top Navbar Styles */
+.top-navbar {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.top-navbar .navbar-brand:hover {
+  color: '#0D7AC4 !important';
+}
+
+.top-navbar .btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Profile Dropdown Styles */
+.profile-dropdown {
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.profile-dropdown button {
+  transition: all 0.2s ease;
+}
+
+.profile-dropdown button:hover {
+  background-color: #F3F4F6 !important;
+}
+
+.profile-dropdown button:hover:last-child {
+  background-color: #FEE2E2 !important;
+}
+
+/* Main Content Styles */
+.main-content {
+  transition: all 0.3s ease;
+  flex: 1;
+}
+
+.page-content {
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* Footer Styles */
+footer {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+footer a:hover {
+  color: #1594EA !important;
+}
+
+footer input:focus {
+  outline: none;
+  border-color: #1594EA !important;
+  box-shadow: 0 0 0 3px rgba(21, 148, 234, 0.1);
+}
+
+footer button:hover {
+  background-color: #0D7AC4 !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(21, 148, 234, 0.3);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 60px !important;
+  }
+  
+  .submenu-sidebar {
+    width: 240px !important;
+    left: 60px !important;
+  }
+  
+  .top-navbar {
+    left: 60px !important;
+  }
+  
+  .main-content {
+    margin-left: 60px !important;
+    padding: 16px !important;
+  }
+  
+  .main-content:has(.submenu-sidebar[style*="translateX(0)"]) {
+    margin-left: 300px !important;
+  }
+
+  .top-navbar .container-fluid {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  footer {
+    padding: '2rem 0 1rem' !important;
+  }
+
+  footer .row {
+    gap: 2rem;
+  }
+
+  footer .col-lg-4,
+  footer .col-lg-2 {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .sidebar {
+    width: 56px !important;
+  }
+  
+  .submenu-sidebar {
+    width: 200px !important;
+    left: 56px !important;
+  }
+  
+  .top-navbar {
+    left: 56px !important;
+    height: '60px' !important;
+  }
+  
+  .main-content {
+    margin-left: 56px !important;
+    padding: 12px !important;
+    margin-top: 60px !important;
+  }
+  
+  .main-content:has(.submenu-sidebar[style*="translateX(0)"]) {
+    margin-left: 256px !important;
+  }
+
+  .top-navbar .navbar-brand {
+    font-size: 1rem !important;
+  }
+
+  .top-navbar .navbar-brand svg {
+    width: 20px !important;
+    height: 20px !important;
+  }
+
+  .profile-dropdown {
+    min-width: 240px !important;
+  }
+
+  footer {
+    padding: '1.5rem 0 0.75rem' !important;
+  }
+
+  footer h4 {
+    font-size: 1.25rem !important;
+  }
+
+  footer h5 {
+    font-size: 1rem !important;
+  }
+
+  footer p,
+  footer span,
+  footer a {
+    font-size: 0.875rem !important;
+  }
+}
+
+/* Scrollbar Styles */
+.sidebar::-webkit-scrollbar,
+.submenu-sidebar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar::-webkit-scrollbar-track,
+.submenu-sidebar::-webkit-scrollbar-track {
+  background: #F3F4F6;
+}
+
+.sidebar::-webkit-scrollbar-thumb,
+.submenu-sidebar::-webkit-scrollbar-thumb {
+  background: #D1D5DB;
+  border-radius: 2px;
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover,
+.submenu-sidebar::-webkit-scrollbar-thumb:hover {
+  background: #9CA3AF;
+}
+
+/* Page Header Styles */
+.page-header h3 {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+/* Card improvements */
+.card {
+  border: 1px solid #E5E7EB;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+.card:hover {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+
+/* Animation classes */
+.fade-in {
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+/* Tooltip improvements */
+.tooltip {
+  font-size: 0.875rem;
+  border-radius: 6px;
+}
+
+.tooltip-inner {
+  background-color: #1F2937;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+/* User avatar hover effect */
+.user-avatar:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(21, 148, 234, 0.3);
+}
+
+/* Logo section hover effect */
+.logo-section > div:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(21, 148, 234, 0.3);
+}
+
+/* Badge improvements */
+.badge {
+  font-weight: 500;
+  border-radius: 4px;
+}
+
+/* Newsletter form improvements */
+.newsletter-form input {
+  transition: all 0.3s ease;
+}
+
+.newsletter-form input:focus {
+  border-color: #1594EA !important;
+  box-shadow: 0 0 0 3px rgba(21, 148, 234, 0.1) !important;
+}
+
+/* Social links hover effects */
+.social-links a {
+  transition: all 0.3s ease;
+}
+
+.social-links a:hover {
+  transform: translateY(-2px);
+  color: #1594EA !important;
+}
+
+/* Footer link improvements */
+.footer-links a {
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.footer-links a::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background-color: #1594EA;
+  transition: width 0.3s ease;
+}
+
+.footer-links a:hover::after {
+  width: 100%;
+}

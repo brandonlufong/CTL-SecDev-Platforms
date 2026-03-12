@@ -1,0 +1,73 @@
+{
+  "super_admin": [
+    "user:create",
+    "user:read",
+    "user:update",
+    "user:delete",
+    "scan:create",
+    "scan:read",
+    "scan:update",
+    "scan:delete",
+    "vulnerability:create",
+    "vulnerability:read",
+    "vulnerability:update",
+    "vulnerability:delete",
+    "asset:create",
+    "asset:read",
+    "asset:update",
+    "asset:delete",
+    "dashboard:read",
+    "system:config",
+    "system:monitor",
+    "system:backup"
+  ],
+  "admin": [
+    "user:create",
+    "user:read",
+    "user:update",
+    "user:delete",
+    "scan:create",
+    "scan:read",
+    "scan:update",
+    "scan:delete",
+    "vulnerability:create",
+    "vulnerability:read",
+    "vulnerability:update",
+    "vulnerability:delete",
+    "asset:create",
+    "asset:read",
+    "asset:update",
+    "asset:delete",
+    "dashboard:read",
+    "system:monitor",
+    "system:backup",
+    "system:config"
+  ],
+  "security_analyst": [
+    "scan:create",
+    "scan:read",
+    "scan:update",
+    "scan:delete",
+    "vulnerability:create",
+    "vulnerability:read",
+    "vulnerability:update",
+    "vulnerability:delete",
+    "asset:create",
+    "asset:read",
+    "asset:update",
+    "asset:delete",
+    "dashboard:read",
+    "system:monitor"
+  ],
+  "auditor": [
+    "user:read",
+    "scan:read",
+    "vulnerability:read",
+    "asset:read",
+    "dashboard:read",
+    "system:monitor"
+  ],
+  "user": [
+    "dashboard:read"
+  ]
+}

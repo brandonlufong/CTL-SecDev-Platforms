@@ -1,0 +1,37 @@
+{
+  "passwordPolicy": {
+    "minLength": 8,
+    "requireUppercase": true,
+    "requireLowercase": true,
+    "requireNumbers": true,
+    "requireSpecialChars": true,
+    "preventReuse": 5,
+    "maxAge": 90,
+    "lockoutThreshold": 5,
+    "lockoutDuration": 15
+  },
+  "sessionPolicy": {
+    "maxDuration": 8,
+    "idleTimeout": 30,
+    "concurrentSessions": 3,
+    "requireReauth": false,
+    "ipWhitelist": [],
+    "ipBlacklist": []
+  },
+  "accessPolicy": {
+    "twoFactorRequired": false,
+    "allowedIps": [],
+    "blockedIps": [],
+    "workingHoursOnly": false,
+    "workingHoursStart": "09:00",
+    "workingHoursEnd": "17:00",
+    "workingDays": [
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday"
+    ],
+    "emergencyAccess": false
+  }
+}

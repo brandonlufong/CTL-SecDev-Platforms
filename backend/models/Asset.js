@@ -72,8 +72,35 @@ const AssetSchema = new mongoose.Schema(
     description: { type: String, trim: true },
     owner: { type: String, trim: true },
     lastScanDate: { type: Date },
+    
+    // IP Geolocation Intelligence
+    geoLocation: {
+      country: { type: String, default: 'Unknown' },
+      countryCode: { type: String, default: 'XX' },
+      city: { type: String, default: 'Unknown' },
+      latitude: { type: Number, default: 0 },
+      longitude: { type: Number, default: 0 },
+      timezone: { type: String, default: 'UTC' },
+      isp: { type: String, default: 'Unknown' },
+      asn: { type: Number, default: null },
+      asnOrganization: { type: String, default: 'Unknown' },
+      isProxy: { type: Boolean, default: false },
+      isHostingProvider: { type: Boolean, default: false },
+      continent: { type: String, default: 'Unknown' },
+      subdivision: { type: String, default: 'Unknown' },
+      postalCode: { type: String, default: '' },
+      accuracyRadius: { type: Number, default: 1000 },
+      lastUpdated: { type: Date, default: Date.now },
+      source: { type: String, default: 'Unknown' }
+    }
   },
   { timestamps: true }
 );
+
+// Index for geolocation queries
+AssetSchema.index({ 'geoLocation.country': 1 });
+AssetSchema.index({ 'geoLocation.city': 1 });
+AssetSchema.index({ 'geoLocation.isp': 1 });
+AssetSchema.index({ 'geoLocation.latitude': 1, 'geoLocation.longitude': 1 });
 
 module.exports = mongoose.model('Asset', AssetSchema);

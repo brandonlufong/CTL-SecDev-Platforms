@@ -60,6 +60,7 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const config = require('./config/config');
 const progressTracker = require('./services/scanProgress');
+const assetMonitoringService = require('./services/assetMonitoringService');
 
 const app = express();
 const server = http.createServer(app);
@@ -119,21 +120,29 @@ mongoose
 // Your routes
 const authRoutes = require('./routes/authRoutes');
 const assetRoutes = require('./routes/assetRoutes');
+const assetInventoryRoutes = require('./routes/assetInventoryRoutes');
+const unifiedAssetInventoryRoutes = require('./routes/unifiedAssetInventoryRoutes');
 const scanRoutes = require('./routes/scanRoutes');
 const deviceRoutes = require('./routes/deviceRoutes');
 const vulnerabilityRoutes = require('./routes/vulnerabilityRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const configRoutes = require('./routes/configRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const accessRoutes = require('./routes/accessRoutes');
+const logsRoutes = require('./routes/logsRoutes');
 
 // Mount routes
 app.use('/api/config', configRoutes); // Config route MUST be first and public
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/access', accessRoutes);
+app.use('/api/logs', logsRoutes);
+app.use('/api/inventory', unifiedAssetInventoryRoutes);
 app.use('/api/assets', assetRoutes);
 app.use('/api/scan', scanRoutes);
 app.use('/api/devices', deviceRoutes);
 app.use('/api/vulnerabilities', vulnerabilityRoutes);
 app.use('/api/dashboard', dashboardRoutes);
-
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -173,6 +182,11 @@ server.listen(PORT, () => {
   console.log(`🔌 WebSocket: ws://${HOST}:${PORT}`);
   console.log(`🌐 CORS Origin: ${config.cors.origin}`);
   console.log('=================================');
+  
+  // Start asset monitoring service
+  console.log('🔍 Starting Asset Monitoring Service...');
+  assetMonitoringService.start(5); // Check every 5 minutes
+  console.log('✅ Asset Monitoring Service started');
 });
 
 // Graceful shutdown

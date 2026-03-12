@@ -6,8 +6,8 @@ require('dotenv').config();
 const config = {
   // Server Configuration
   server: {
-    port: process.env.PORT || 5000,
-    host: process.env.HOST || '172.20.19.172',
+    port: process.env.PORT || 5001,
+    host: process.env.HOST || 'localhost',
     nodeEnv: process.env.NODE_ENV || 'development',
   },
 
@@ -24,7 +24,9 @@ const config = {
 
   // CORS Configuration
   cors: {
-    origin: process.env.CORS_ORIGIN || 'http://172.20.19.172:3001',
+    origin: process.env.CORS_ORIGIN ? 
+      process.env.CORS_ORIGIN.split(',') : 
+      ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001'],
     credentials: true,
   },
 

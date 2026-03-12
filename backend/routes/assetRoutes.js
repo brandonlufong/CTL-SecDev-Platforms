@@ -23,7 +23,12 @@ router.get('/search', protect, assetController.searchAssets);
 router.post('/', protect, assetController.createAsset);
 router.put('/:id', protect, assetController.updateAsset);
 router.delete('/:id', protect, assetController.deleteAsset);
-// routes/assets.js
 router.post('/ping', protect, assetController.pingAssets);
+
+// Geolocation routes
+router.get('/location', protect, assetController.getAssetsByLocation);
+router.get('/geo-stats', protect, assetController.getGeoStats);
+router.post('/bulk-enrich', protect, assetController.bulkEnrichAssets);
+router.post('/update-stale-geo', protect, assetController.updateStaleGeoData);
 
 module.exports = router;
