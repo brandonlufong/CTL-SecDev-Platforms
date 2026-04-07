@@ -13,22 +13,22 @@
 const express = require('express');
 const router = express.Router();
 const assetController = require('../controllers/assetController');
-const protect = require('../middleware/authMiddleware'); // Auth middleware
+const { verifyToken } = require('../middleware/authMiddleware'); // Auth middleware
 const Asset = require('../models/Asset'); // Adjust path if needed
 const ping = require('ping');
 
 // Asset routes
-router.get('/', protect, assetController.getAssets);
-router.get('/search', protect, assetController.searchAssets);
-router.post('/', protect, assetController.createAsset);
-router.put('/:id', protect, assetController.updateAsset);
-router.delete('/:id', protect, assetController.deleteAsset);
-router.post('/ping', protect, assetController.pingAssets);
+router.get('/', verifyToken, assetController.getAssets);
+router.get('/search', verifyToken, assetController.searchAssets);
+router.post('/', verifyToken, assetController.createAsset);
+router.put('/:id', verifyToken, assetController.updateAsset);
+router.delete('/:id', verifyToken, assetController.deleteAsset);
+router.post('/ping', verifyToken, assetController.pingAssets);
 
 // Geolocation routes
-router.get('/location', protect, assetController.getAssetsByLocation);
-router.get('/geo-stats', protect, assetController.getGeoStats);
-router.post('/bulk-enrich', protect, assetController.bulkEnrichAssets);
-router.post('/update-stale-geo', protect, assetController.updateStaleGeoData);
+router.get('/location', verifyToken, assetController.getAssetsByLocation);
+router.get('/geo-stats', verifyToken, assetController.getGeoStats);
+router.post('/bulk-enrich', verifyToken, assetController.bulkEnrichAssets);
+router.post('/update-stale-geo', verifyToken, assetController.updateStaleGeoData);
 
 module.exports = router;

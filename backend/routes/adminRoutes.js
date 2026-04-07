@@ -14,7 +14,7 @@ const {
   updateRole,
   deleteRole
 } = require('../controllers/adminController');
-const protect = require('../middleware/authMiddleware');
+const { verifyToken } = require('../middleware/authMiddleware');
 const {
   checkPermission,
   checkRole,
@@ -22,7 +22,7 @@ const {
 } = require('../middleware/rbacMiddleware');
 
 // Apply authentication middleware to all routes
-router.use(protect);
+router.use(verifyToken);
 
 // User management routes
 router.get('/users/stats', 

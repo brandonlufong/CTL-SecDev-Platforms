@@ -61,6 +61,7 @@ const mongoose = require('mongoose');
 const config = require('./config/config');
 const progressTracker = require('./services/scanProgress');
 const assetMonitoringService = require('./services/assetMonitoringService');
+const { initSocket } = require('./utils/socket');
 
 const app = express();
 const server = http.createServer(app);
@@ -73,6 +74,9 @@ const io = new Server(server, {
     credentials: config.cors.credentials
   }
 });
+
+// Initialize socket utility
+initSocket(io);
 
 // Initialize progress tracker with Socket.IO instance
 progressTracker.init(io);
@@ -130,6 +134,7 @@ const configRoutes = require('./routes/configRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const accessRoutes = require('./routes/accessRoutes');
 const logsRoutes = require('./routes/logsRoutes');
+const assetDiscoveryRoutes = require('./routes/discovery');
 
 // Mount routes
 app.use('/api/config', configRoutes); // Config route MUST be first and public
@@ -143,13 +148,16 @@ app.use('/api/scan', scanRoutes);
 app.use('/api/devices', deviceRoutes);
 app.use('/api/vulnerabilities', vulnerabilityRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/discovery', assetDiscoveryRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     timestamp: new Date().toISOString(),
-    environment: config.server.nodeEnv
+    environment: config.server.nodeEnv,
+    uptime: process.uptime(),
+    message: 'Server is running smoothly'
   });
 });
 

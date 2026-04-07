@@ -15,7 +15,7 @@ const systemLogSchema = new mongoose.Schema({
   service: {
     type: String,
     required: true,
-    enum: ['application', 'database', 'auth', 'api', 'scan', 'system', 'security', 'network', 'asset-monitoring', 'asset-classification'],
+    enum: ['application', 'database', 'auth', 'api', 'scan', 'system', 'security', 'network', 'asset-monitoring', 'asset-classification', 'asset-discovery', 'unified-asset-inventory'],
     index: true
   },
   message: {

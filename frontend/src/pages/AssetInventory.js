@@ -45,6 +45,7 @@ import {
 } from 'react-icons/fa';
 import { AuthContext } from '../context/AuthContext';
 import config from '../config';
+import AssetDiscovery from '../components/AssetDiscovery';
 
 const AssetInventory = () => {
   const { token } = useContext(AuthContext);
@@ -58,7 +59,6 @@ const AssetInventory = () => {
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [showClassificationModal, setShowClassificationModal] = useState(false);
   const [showDiscoveryModal, setShowDiscoveryModal] = useState(false);
-  const [discoveryStatus, setDiscoveryStatus] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
@@ -88,14 +88,7 @@ const AssetInventory = () => {
     notes: ''
   });
 
-  // Discovery form state
-  const [discoveryForm, setDiscoveryForm] = useState({
-    networkRange: '',
-    ports: '22,23,53,80,135,139,443,445,993,995,1723,3389,5900',
-    timeout: 5000,
-    maxConcurrent: 50
-  });
-
+  
   // Fetch unified dashboard data
   const fetchDashboardData = async () => {
     try {
@@ -167,59 +160,8 @@ const AssetInventory = () => {
     }
   };
 
-  // Fetch discovery status
-  const fetchDiscoveryStatus = async () => {
-    try {
-      const response = await fetch(`${config.API_BASE_URL}/api/inventory/discovery/status`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setDiscoveryStatus(data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch discovery status:', error);
-    }
-  };
-
-  // Start asset discovery
-  const startDiscovery = async () => {
-    try {
-      setError('');
-      setSuccess('');
-      
-      const response = await fetch(`${config.API_BASE_URL}/api/inventory/discovery/start`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(discoveryForm)
-      });
-
-      if (response.ok) {
-        setSuccess('Asset discovery started successfully');
-        setShowDiscoveryModal(false);
-        // Poll for status updates
-        const statusInterval = setInterval(async () => {
-          await fetchDiscoveryStatus();
-          if (discoveryStatus && !discoveryStatus.isScanning) {
-            clearInterval(statusInterval);
-            fetchDashboardData();
-            fetchAssets();
-          }
-        }, 5000);
-      } else {
-        const errorData = await response.json();
-        setError(errorData.message || 'Failed to start discovery');
-      }
-    } catch (error) {
-      setError('Failed to start discovery');
-      console.error('Discovery error:', error);
-    }
-  };
-
+  
+  
   // Update asset classification (only for server assets)
   const updateAssetClassification = async () => {
     try {
@@ -290,8 +232,7 @@ const AssetInventory = () => {
       await Promise.all([
         fetchDashboardData(),
         fetchCategoriesAndTags(),
-        fetchAssets(),
-        fetchDiscoveryStatus()
+        fetchAssets()
       ]);
       setLoading(false);
     };
@@ -301,7 +242,6 @@ const AssetInventory = () => {
     // Set up real-time updates
     const interval = setInterval(() => {
       fetchDashboardData();
-      fetchDiscoveryStatus();
     }, 30000); // Update every 30 seconds
 
     return () => clearInterval(interval);
@@ -667,85 +607,7 @@ const AssetInventory = () => {
     );
   };
 
-  // Render discovery modal
-  const renderDiscoveryModal = () => (
-    <Modal show={showDiscoveryModal} onHide={() => setShowDiscoveryModal(false)} size="lg">
-      <Modal.Header closeButton>
-        <Modal.Title>
-          <FaSearch className="me-2" />
-          Asset Discovery
-        </Modal.Title>
-      </Modal.Header>
-      <Modal.Body>
-        <Form>
-          <Form.Group className="mb-3">
-            <Form.Label>Network Range</Form.Label>
-            <Form.Control
-              type="text"
-              placeholder="e.g., 192.168.1.0/24"
-              value={discoveryForm.networkRange}
-              onChange={(e) => setDiscoveryForm({ ...discoveryForm, networkRange: e.target.value })}
-            />
-            <Form.Text className="text-muted">
-              Enter network range in CIDR notation (e.g., 192.168.1.0/24)
-            </Form.Text>
-          </Form.Group>
-          
-          <Row>
-            <Col md={6}>
-              <Form.Group className="mb-3">
-                <Form.Label>Ports to Scan</Form.Label>
-                <Form.Control
-                  type="text"
-                  value={discoveryForm.ports}
-                  onChange={(e) => setDiscoveryForm({ ...discoveryForm, ports: e.target.value })}
-                />
-              </Form.Group>
-            </Col>
-            <Col md={6}>
-              <Form.Group className="mb-3">
-                <Form.Label>Timeout (ms)</Form.Label>
-                <Form.Control
-                  type="number"
-                  value={discoveryForm.timeout}
-                  onChange={(e) => setDiscoveryForm({ ...discoveryForm, timeout: parseInt(e.target.value) })}
-                />
-              </Form.Group>
-            </Col>
-          </Row>
-
-          <Row>
-            <Col md={6}>
-              <Form.Group className="mb-3">
-                <Form.Label>Max Concurrent Scans</Form.Label>
-                <Form.Control
-                  type="number"
-                  value={discoveryForm.maxConcurrent}
-                  onChange={(e) => setDiscoveryForm({ ...discoveryForm, maxConcurrent: parseInt(e.target.value) })}
-                />
-              </Form.Group>
-            </Col>
-          </Row>
-
-          {discoveryStatus?.isScanning && (
-            <Alert variant="info">
-              <Spinner size="sm" className="me-2" />
-              Discovery scan in progress... {discoveryStatus.currentScan?.progress || 0}%
-            </Alert>
-          )}
-        </Form>
-      </Modal.Body>
-      <Modal.Footer>
-        <Button variant="secondary" onClick={() => setShowDiscoveryModal(false)}>
-          Cancel
-        </Button>
-        <Button variant="primary" onClick={startDiscovery} disabled={discoveryStatus?.isScanning}>
-          Start Discovery
-        </Button>
-      </Modal.Footer>
-    </Modal>
-  );
-
+  
   // Render classification modal
   const renderClassificationModal = () => (
     <Modal show={showClassificationModal} onHide={() => setShowClassificationModal(false)} size="lg">
@@ -929,7 +791,10 @@ const AssetInventory = () => {
       </Tabs>
 
       {/* Modals */}
-      {renderDiscoveryModal()}
+      <AssetDiscovery 
+        show={showDiscoveryModal} 
+        onHide={() => setShowDiscoveryModal(false)} 
+      />
       {renderClassificationModal()}
     </div>
   );

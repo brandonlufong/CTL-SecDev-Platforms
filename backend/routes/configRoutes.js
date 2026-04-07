@@ -5,7 +5,7 @@ const express = require('express');
 const router = express.Router();
 const config = require('../config/config');
 const configController = require('../controllers/configController');
-const protect = require('../middleware/authMiddleware');
+const { verifyToken } = require('../middleware/authMiddleware');
 const { checkPermission } = require('../middleware/rbacMiddleware');
 
 /**
@@ -45,22 +45,24 @@ router.get('/health', (req, res) => {
 // System Settings Routes (Protected)
 // ========================================
 
+router.use(verifyToken);
+
 // System configuration endpoints
-router.get('/system', protect, checkPermission('system:config'), configController.getSystemConfig);
-router.put('/system/:category', protect, checkPermission('system:config'), configController.updateSystemConfig);
-router.get('/status', protect, checkPermission('system:monitor'), configController.getSystemStatus);
-router.post('/restart/:service', protect, checkPermission('system:config'), configController.restartService);
+router.get('/system', checkPermission('system:config'), configController.getSystemConfig);
+router.put('/system/:category', checkPermission('system:config'), configController.updateSystemConfig);
+router.get('/status', checkPermission('system:monitor'), configController.getSystemStatus);
+router.post('/restart/:service', checkPermission('system:config'), configController.restartService);
 
 // Backup endpoints
-router.post('/backup', protect, checkPermission('system:backup'), configController.createBackup);
-router.get('/backups', protect, checkPermission('system:backup'), configController.getBackupList);
-router.post('/restore/:fileName', protect, checkPermission('system:backup'), configController.restoreBackup);
+router.post('/backup', verifyToken, checkPermission('system:backup'), configController.createBackup);
+router.get('/backups', verifyToken, checkPermission('system:backup'), configController.getBackupList);
+router.post('/restore/:fileName', verifyToken, checkPermission('system:backup'), configController.restoreBackup);
 
 // System logs endpoints
-router.get('/logs', protect, checkPermission('system:monitor'), configController.getSystemLogs);
-router.delete('/logs/:level', protect, checkPermission('system:config'), configController.clearSystemLogs);
+router.get('/logs', verifyToken, checkPermission('system:monitor'), configController.getSystemLogs);
+router.delete('/logs/:level', verifyToken, checkPermission('system:config'), configController.clearSystemLogs);
 
 // System activity endpoint
-router.get('/activity', protect, checkPermission('system:monitor'), configController.getRecentActivity);
+router.get('/activity', verifyToken, checkPermission('system:monitor'), configController.getRecentActivity);
 
 module.exports = router;

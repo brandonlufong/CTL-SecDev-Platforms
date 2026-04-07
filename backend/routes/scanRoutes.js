@@ -12,33 +12,33 @@ const {
   testBulkConnectivity,
   runBatchScan
 } = require('../controllers/scanController');
-const protect = require('../middleware/authMiddleware');
+const { verifyToken } = require('../middleware/authMiddleware');
 
 // Single asset scan with enhanced vulnerability detection
-router.post('/asset', protect, scanAsset);
+router.post('/asset', verifyToken, scanAsset);
 
 // Single asset scan with enhanced vulnerability detection
-router.post('/device', protect, scanDevice);
+router.post('/device', verifyToken, scanDevice);
 
 // Quick scan across all online assets
-router.post('/quick', protect, runQuickScan);
+router.post('/quick', verifyToken, runQuickScan);
 
 // Batch scan for multiple assets
-router.post('/batch', protect, runBatchScan);
+router.post('/batch', verifyToken, runBatchScan);
 
 // Get latest scan results
-router.get('/latest', protect, getLatestScans);
+router.get('/latest', verifyToken, getLatestScans);
 
 // Get current scan progress
-router.get('/progress', protect, getScanProgress);
+router.get('/progress', verifyToken, getScanProgress);
 
 // Test asset connectivity
-router.get('/test/:assetId', protect, testConnectivity);
+router.get('/test/:assetId', verifyToken, testConnectivity);
 
 // Test device connectivity
-router.get('/test/:deviceId', protect, testConnectivity);
+router.get('/test/:deviceId', verifyToken, testConnectivity);
 
 // Test bulk connectivity
-router.post('/test/bulk', protect, testBulkConnectivity);
+router.post('/test/bulk', verifyToken, testBulkConnectivity);
 
 module.exports = router;

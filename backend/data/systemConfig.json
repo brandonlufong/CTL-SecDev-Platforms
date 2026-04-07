@@ -1,8 +1,8 @@
 {
   "general": {
-    "platformName": "CAMTEL Security Platform",
+    "platformName": "CAMTEL Platform",
     "version": "2.0.0",
-    "environment": "production",
+    "environment": "development",
     "timezone": "UTC",
     "dateFormat": "MM/DD/YYYY",
     "timeFormat": "24h",
