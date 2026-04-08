@@ -26,7 +26,8 @@ npm run seed-admin:prod
 ### seedAdmin.js
 - Basic admin account creation
 - Suitable for development environments
-- Creates admin with full permissions
+- Creates admin with auto-assigned permissions based on role
+- Uses updated User schema with `name` field
 
 ### seedAdminProduction.js
 - Production-ready admin account creation
@@ -35,6 +36,8 @@ npm run seed-admin:prod
   - Last login timestamp
   - Enhanced logging and error handling
   - Security warnings about password change
+  - Auto-assigned permissions based on admin role
+  - Uses modern MongoDB connection (no deprecated options)
 
 ## Admin Permissions
 

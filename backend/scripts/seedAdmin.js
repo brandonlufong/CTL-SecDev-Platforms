@@ -6,10 +6,7 @@ const config = require('../config/config');
 const seedAdmin = async () => {
   try {
     // Connect to database
-    await mongoose.connect(config.database.uri, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    await mongoose.connect(config.database.uri);
     console.log('Connected to MongoDB');
 
     // Check if admin already exists
@@ -25,33 +22,12 @@ const seedAdmin = async () => {
     const hashedPassword = await bcrypt.hash('Admin@123!', salt);
 
     const admin = new User({
+      name: 'System Administrator',
       email: 'admin@camtel.cm',
       password: hashedPassword,
-      firstName: 'System',
-      lastName: 'Administrator',
       role: 'admin',
       isActive: true,
-      permissions: [
-        'user:create',
-        'user:read', 
-        'user:update',
-        'user:delete',
-        'asset:create',
-        'asset:read',
-        'asset:edit',
-        'asset:delete',
-        'system:config',
-        'system:monitor',
-        'system:backup',
-        'vulnerability:create',
-        'vulnerability:read',
-        'vulnerability:update',
-        'vulnerability:delete',
-        'scan:create',
-        'scan:read',
-        'scan:update',
-        'scan:delete'
-      ]
+      permissions: [] // Will be auto-assigned based on role
     });
 
     await admin.save();
