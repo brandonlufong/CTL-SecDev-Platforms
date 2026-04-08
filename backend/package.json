@@ -8,7 +8,8 @@
     "start": "node server.js",
     "init-admin": "node scripts/initAdmin.js",
     "seed-admin": "node scripts/seedAdmin.js",
-    "seed-admin:prod": "node scripts/seedAdminProduction.js"
+    "seed-admin:prod": "node scripts/seedAdminProduction.js",
+    "fix-admin-permissions": "node scripts/fixAdminPermissions.js"
   },
   "keywords": [],
   "author": "",

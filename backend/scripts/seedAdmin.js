@@ -30,7 +30,8 @@ const seedAdmin = async () => {
       permissions: [] // Will be auto-assigned based on role
     });
 
-    await admin.save();
+    // Manually assign permissions for new user
+    await admin.addRolePermissions();
     console.log('Admin user created successfully!');
     console.log('Email: admin@camtel.cm');
     console.log('Password: Admin@123!');

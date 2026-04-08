@@ -70,7 +70,7 @@ userSchema.methods.addRolePermissions = function() {
 
 // Pre-save middleware to automatically assign permissions
 userSchema.pre('save', function(next) {
-  if (this.isModified('role') && !this.isNew) {
+  if (this.isNew || this.isModified('role')) {
     this.addRolePermissions();
   }
   next();

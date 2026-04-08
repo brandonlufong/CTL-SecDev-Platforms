@@ -34,7 +34,8 @@ const seedAdminProduction = async () => {
       permissions: [] // Will be auto-assigned based on role
     });
 
-    await admin.save();
+    // Manually assign permissions for new user
+    await admin.addRolePermissions();
     console.log('=================================');
     console.log('ADMIN USER CREATED SUCCESSFULLY!');
     console.log('=================================');
