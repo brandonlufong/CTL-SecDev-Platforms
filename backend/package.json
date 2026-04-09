@@ -9,7 +9,8 @@
     "init-admin": "node scripts/initAdmin.js",
     "seed-admin": "node scripts/seedAdmin.js",
     "seed-admin:prod": "node scripts/seedAdminProduction.js",
-    "fix-admin-permissions": "node scripts/fixAdminPermissions.js"
+    "fix-admin-permissions": "node scripts/fixAdminPermissions.js",
+    "update-admin-permissions": "node scripts/updateAdminPermissions.js"
   },
   "keywords": [],
   "author": "",

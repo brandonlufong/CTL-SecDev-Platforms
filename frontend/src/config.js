@@ -1,4 +1,4 @@
-const PORT = 5001;
+const PORT = 5002;
 const HOST = "localhost";
 const API_BASE_URL = `http://${HOST}:${PORT}`;
 

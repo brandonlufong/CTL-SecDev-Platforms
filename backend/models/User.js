@@ -15,7 +15,7 @@ const userSchema = new mongoose.Schema({
       'user:create', 'user:read', 'user:update', 'user:delete',
       'scan:create', 'scan:read', 'scan:update', 'scan:delete',
       'vulnerability:create', 'vulnerability:read', 'vulnerability:update', 'vulnerability:delete',
-      'asset:create', 'asset:read', 'asset:update', 'asset:delete',
+      'asset:create', 'asset:view', 'asset:edit', 'asset:delete',
       'dashboard:read', 'system:config', 'system:monitor', 'system:backup'
     ]
   }],
@@ -39,28 +39,28 @@ userSchema.methods.addRolePermissions = function() {
       'user:create', 'user:read', 'user:update', 'user:delete',
       'scan:create', 'scan:read', 'scan:update', 'scan:delete',
       'vulnerability:create', 'vulnerability:read', 'vulnerability:update', 'vulnerability:delete',
-      'asset:create', 'asset:read', 'asset:update', 'asset:delete',
+      'asset:create', 'asset:view', 'asset:edit', 'asset:delete',
       'dashboard:read', 'system:config', 'system:monitor', 'system:backup'
     ],
     admin: [
       'user:create', 'user:read', 'user:update',
       'scan:create', 'scan:read', 'scan:update', 'scan:delete',
       'vulnerability:create', 'vulnerability:read', 'vulnerability:update', 'vulnerability:delete',
-      'asset:create', 'asset:read', 'asset:update', 'asset:delete',
+      'asset:create', 'asset:view', 'asset:edit', 'asset:delete',
       'dashboard:read', 'system:monitor'
     ],
     security_analyst: [
       'scan:create', 'scan:read', 'scan:update',
       'vulnerability:read', 'vulnerability:update',
-      'asset:read', 'asset:update',
+      'asset:view', 'asset:edit',
       'dashboard:read'
     ],
     auditor: [
-      'scan:read', 'vulnerability:read', 'asset:read',
+      'scan:read', 'vulnerability:read', 'asset:view',
       'dashboard:read'
     ],
     user: [
-      'scan:read', 'vulnerability:read', 'asset:read', 'dashboard:read'
+      'scan:read', 'vulnerability:read', 'asset:view', 'dashboard:read'
     ]
   };
 
