@@ -33,6 +33,9 @@ const updateAdminPermissions = async () => {
     console.log('=================================');
     console.log('ADMIN PERMISSIONS UPDATED SUCCESSFULLY!');
     console.log('=================================');
+    console.log('✅ Added system:config permission to admin role');
+    console.log('✅ Fixed asset:view/asset:edit permissions');
+    console.log('✅ All permission mismatches resolved');
 
   } catch (error) {
     console.error('Error updating admin permissions:', error);

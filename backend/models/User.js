@@ -47,7 +47,7 @@ userSchema.methods.addRolePermissions = function() {
       'scan:create', 'scan:read', 'scan:update', 'scan:delete',
       'vulnerability:create', 'vulnerability:read', 'vulnerability:update', 'vulnerability:delete',
       'asset:create', 'asset:view', 'asset:edit', 'asset:delete',
-      'dashboard:read', 'system:monitor'
+      'dashboard:read', 'system:monitor', 'system:config'
     ],
     security_analyst: [
       'scan:create', 'scan:read', 'scan:update',
