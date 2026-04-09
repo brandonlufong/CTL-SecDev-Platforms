@@ -53,11 +53,11 @@ userSchema.methods.addRolePermissions = function() {
       'scan:create', 'scan:read', 'scan:update',
       'vulnerability:read', 'vulnerability:update',
       'asset:view', 'asset:edit',
-      'dashboard:read'
+      'dashboard:read', 'system:monitor'
     ],
     auditor: [
       'scan:read', 'vulnerability:read', 'asset:view',
-      'dashboard:read'
+      'dashboard:read', 'system:monitor'
     ],
     user: [
       'scan:read', 'vulnerability:read', 'asset:view', 'dashboard:read'

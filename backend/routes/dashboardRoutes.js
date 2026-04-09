@@ -2,8 +2,9 @@ const express = require('express');
 const router = express.Router();
 const { getDashboardSummary } = require('../controllers/dashboardController');
 const { verifyToken } = require('../middleware/authMiddleware');
+const { checkPermission } = require('../middleware/rbacMiddleware');
 
-// Correct: handler is a function
-router.get('/summary', verifyToken, getDashboardSummary);
+// Dashboard summary requires dashboard:read permission
+router.get('/summary', verifyToken, checkPermission('dashboard:read'), getDashboardSummary);
 
 module.exports = router;

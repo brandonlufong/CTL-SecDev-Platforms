@@ -10,7 +10,8 @@
     "seed-admin": "node scripts/seedAdmin.js",
     "seed-admin:prod": "node scripts/seedAdminProduction.js",
     "fix-admin-permissions": "node scripts/fixAdminPermissions.js",
-    "update-admin-permissions": "node scripts/updateAdminPermissions.js"
+    "update-admin-permissions": "node scripts/updateAdminPermissions.js",
+    "fix-all-permissions": "node scripts/fixAllPermissions.js"
   },
   "keywords": [],
   "author": "",
