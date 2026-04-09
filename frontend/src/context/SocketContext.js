@@ -42,12 +42,19 @@ export const SocketProvider = ({ children }) => {
 
     // Initialize socket connection
     console.log('Initializing socket connection...');
+    
+    // Use the same URL as API_BASE_URL for Socket.IO connection
+    // Socket.IO will automatically handle the WebSocket upgrade
     socketRef.current = io(config.API_BASE_URL, {
       auth: { token },
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
+      timeout: 20000,
+      forceNew: false,
+      upgrade: true,
+      rememberUpgrade: true
     });
 
     const socket = socketRef.current;
