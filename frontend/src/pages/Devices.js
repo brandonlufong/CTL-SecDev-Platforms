@@ -10,6 +10,7 @@ import Select from 'react-select';
 import Papa from 'papaparse';
 import '../App.css'
 import config from '../config';
+import { useT } from '../context/LanguageContext';
 import ScanProgressBar from '../components/ScanProgressBar';
 import { useScan } from '../context/ScanContext';
 import { useSocket } from '../context/SocketContext';
@@ -34,6 +35,7 @@ const scanTypes = [
 ];
 
 const Devices = () => {
+  const t = useT();
   const { token } = useContext(AuthContext);
 
   const {
@@ -419,7 +421,7 @@ const Devices = () => {
   return (
     <div className="container mt-4" style={{ backgroundColor: '#F1F8FD', minHeight: '100vh' }}>
       <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap">
-        <h3 style={{ color: '#1594EA' }} className="d-flex align-items-center"><FaNetworkWired className="me-2" />Network Devices</h3>
+        <h3 className="vm-page-title"><FaNetworkWired />{t('Network Devices')}</h3>
         <div className="d-flex gap-2 flex-wrap">
           <ButtonGroup>
             <Button style={{ backgroundColor: '#1594EA' }} onClick={() => openCreateModal(true)}>

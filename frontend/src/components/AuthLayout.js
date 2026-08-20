@@ -15,10 +15,10 @@ const AuthLayout = ({ children }) => {
       overflow: 'hidden'
     }}>
       {/* Simple Navbar with App Name */}
-      <Navbar 
-        style={{ 
-          backgroundColor: '#1594EA',
-          borderBottom: '1px solid #1594EA',
+      <Navbar
+        style={{
+          background: 'linear-gradient(135deg, #1594EA 0%, #0D6EBD 100%)',
+          borderBottom: 'none',
           height: '73px',
           flexShrink: 0
         }}

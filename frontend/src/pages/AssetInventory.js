@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
 import {
+  ListGroup,
   Container,
   Row,
   Col,
@@ -46,8 +47,12 @@ import {
 import { AuthContext } from '../context/AuthContext';
 import config from '../config';
 import AssetDiscovery from '../components/AssetDiscovery';
+import BsPagination from '../components/BsPagination';
+import { getMonitoringStatus, triggerMonitoringCheck } from '../api/platformApi';
+import { useT } from '../context/LanguageContext';
 
 const AssetInventory = () => {
+  const t = useT();
   const { token } = useContext(AuthContext);
   
   // State management
@@ -62,6 +67,30 @@ const AssetInventory = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
+
+  // Client-side pagination for the assets table
+  const [aiPage, setAiPage] = useState(1);
+  const [aiPageSize, setAiPageSize] = useState(25);
+  // assets is refetched when search/filters change, so reset the page on new data.
+  useEffect(() => { setAiPage(1); }, [assets]);
+
+  // Real-time monitoring tab state
+  const [monitoring, setMonitoring] = useState(null);
+  const [monLoading, setMonLoading] = useState(false);
+  const loadMonitoring = useCallback(async () => {
+    setMonLoading(true);
+    try { setMonitoring(await getMonitoringStatus()); } catch (e) { /* ignore */ } finally { setMonLoading(false); }
+  }, []);
+  useEffect(() => {
+    if (activeTab !== 'monitoring') return undefined;
+    loadMonitoring();
+    const t = setInterval(loadMonitoring, 15000);
+    return () => clearInterval(t);
+  }, [activeTab, loadMonitoring]);
+  const runMonitoringCheck = async () => {
+    setMonLoading(true);
+    try { await triggerMonitoringCheck(); await loadMonitoring(); } catch (e) { /* ignore */ } finally { setMonLoading(false); }
+  };
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -530,7 +559,7 @@ const AssetInventory = () => {
                 </tr>
               </thead>
               <tbody>
-                {assets.map((asset) => (
+                {assets.slice((aiPage - 1) * aiPageSize, aiPage * aiPageSize).map((asset) => (
                   <tr key={asset._id}>
                     <td>
                       <div className="d-flex align-items-center">
@@ -601,6 +630,14 @@ const AssetInventory = () => {
                 ))}
               </tbody>
             </Table>
+            <BsPagination
+              currentPage={aiPage}
+              totalItems={assets.length}
+              itemsPerPage={aiPageSize}
+              onPageChange={setAiPage}
+              onPageSizeChange={(s) => { setAiPageSize(s); setAiPage(1); }}
+              label="assets"
+            />
           </Card.Body>
         </Card>
       </>
@@ -748,9 +785,9 @@ const AssetInventory = () => {
       {/* Header */}
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h2 className="mb-1" style={{ color: '#1594EA', fontWeight: '600' }}>
-            <FaServer className="me-2" style={{ color: '#1594EA' }} />
-            Unified Asset Inventory
+          <h2 className="mb-1 vm-page-title">
+            <FaDatabase />
+            {t('Unified Asset Inventory')}
           </h2>
           <p className="text-muted mb-0">Comprehensive asset management for servers and network devices</p>
         </div>
@@ -780,11 +817,73 @@ const AssetInventory = () => {
         </Tab>
         <Tab eventKey="monitoring" title="Monitoring">
           <Card className="border-0 shadow-sm">
-            <Card.Body className="text-center">
-              <FaShieldAlt className="text-primary mb-3" size={48} />
-              <h4>Real-time Monitoring</h4>
-              <p className="text-muted">Monitor asset health and performance in real-time</p>
-              <Button variant="primary">Enable Monitoring</Button>
+            <Card.Body>
+              <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <h5 className="mb-0"><FaShieldAlt className="text-primary me-2" />Real-time Monitoring</h5>
+                <div className="d-flex gap-2 align-items-center">
+                  <Badge bg={monitoring?.isMonitoring ? 'success' : 'secondary'}>
+                    {monitoring?.isMonitoring ? '● Active' : '○ Idle'}
+                  </Badge>
+                  <Button size="sm" variant="outline-info" onClick={loadMonitoring} disabled={monLoading}>
+                    <FaSync className={monLoading ? 'spin' : ''} /> Refresh
+                  </Button>
+                  <Button size="sm" style={{ backgroundColor: '#1594EA' }} onClick={runMonitoringCheck} disabled={monLoading}>
+                    {monLoading ? <><Spinner size="sm" animation="border" /> Checking...</> : <>Run Check Now</>}
+                  </Button>
+                </div>
+              </div>
+
+              {!monitoring ? (
+                <div className="text-muted py-3 text-center">Loading monitoring data…</div>
+              ) : (
+                <>
+                  <Row className="g-2 mb-3">
+                    <Col xs={6} md={3}><Card className="text-center"><Card.Body className="py-2"><h4 className="text-success mb-0">{monitoring.summary?.healthy || 0}</h4><small className="text-muted">Healthy</small></Card.Body></Card></Col>
+                    <Col xs={6} md={3}><Card className="text-center"><Card.Body className="py-2"><h4 className="text-warning mb-0">{monitoring.summary?.warning || 0}</h4><small className="text-muted">Warning</small></Card.Body></Card></Col>
+                    <Col xs={6} md={3}><Card className="text-center"><Card.Body className="py-2"><h4 className="text-danger mb-0">{monitoring.summary?.unhealthy || 0}</h4><small className="text-muted">Unhealthy</small></Card.Body></Card></Col>
+                    <Col xs={6} md={3}><Card className="text-center"><Card.Body className="py-2"><h4 className="mb-0" style={{ color: '#1594EA' }}>{monitoring.totalAssets || 0}</h4><small className="text-muted">Monitored</small></Card.Body></Card></Col>
+                  </Row>
+
+                  <Table responsive hover>
+                    <thead>
+                      <tr><th>Asset</th><th>IP Address</th><th>Status</th><th>Response</th><th>Last Check</th></tr>
+                    </thead>
+                    <tbody>
+                      {(monitoring.healthChecks || []).length === 0 ? (
+                        <tr><td colSpan="5" className="text-center text-muted py-4">No health data yet — click “Run Check Now”.</td></tr>
+                      ) : (
+                        monitoring.healthChecks.map((h, i) => (
+                          <tr key={i}>
+                            <td><strong>{h.name || h.assetName || h.asset || '—'}</strong></td>
+                            <td><code>{h.ip || '—'}</code></td>
+                            <td>
+                              <Badge bg={h.status === 'healthy' ? 'success' : h.status === 'warning' ? 'warning' : 'danger'}>
+                                {h.status || 'unknown'}
+                              </Badge>
+                            </td>
+                            <td>{h.responseTime != null ? `${Math.round(h.responseTime)}ms` : '—'}</td>
+                            <td><small className="text-muted">{h.timestamp ? new Date(h.timestamp).toLocaleTimeString() : '—'}</small></td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </Table>
+
+                  {(monitoring.recentAlerts || []).length > 0 && (
+                    <>
+                      <h6 className="mt-3">Recent Alerts</h6>
+                      <ListGroup>
+                        {monitoring.recentAlerts.slice().reverse().map((a, i) => (
+                          <ListGroup.Item key={i} className="d-flex justify-content-between align-items-center">
+                            <span><FaExclamationTriangle className="text-warning me-2" />{a.message || a.type || 'Alert'}</span>
+                            <small className="text-muted">{a.timestamp ? new Date(a.timestamp).toLocaleString() : ''}</small>
+                          </ListGroup.Item>
+                        ))}
+                      </ListGroup>
+                    </>
+                  )}
+                </>
+              )}
             </Card.Body>
           </Card>
         </Tab>

@@ -1,9 +1,13 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { Container, Form, Button, Card, Alert } from 'react-bootstrap';
 import { AuthContext } from '../context/AuthContext';
+import { FaUser } from 'react-icons/fa';
+import { useT } from '../context/LanguageContext';
 import config from '../config';
+import '../styles/theme.css';
 
 const Profile = () => {
+  const t = useT();
   const { user, token, setUser } = useContext(AuthContext);
   const [form, setForm] = useState({ name: '' });
   const [passwordForm, setPasswordForm] = useState({ 
@@ -103,9 +107,25 @@ const Profile = () => {
 
   return (
     <Container className="py-4">
-      <h3 className="mb-4">Profile</h3>
+      <h3 className="mb-4 vm-page-title"><FaUser /> {t('Profile')}</h3>
       <Card>
         <Card.Body>
+          {/* Identity header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid var(--vm-border)' }}>
+            <div style={{
+              width: 64, height: 64, borderRadius: '50%', background: 'var(--vm-gradient)', color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 700,
+              boxShadow: '0 8px 18px -8px rgba(21,148,234,.6)', flexShrink: 0,
+            }}>
+              {(user.name || user.email || 'U').slice(0, 2).toUpperCase()}
+            </div>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--vm-text)' }}>{user.name || '—'}</div>
+              <div style={{ color: 'var(--vm-text-muted)', fontSize: 14 }}>{user.email}</div>
+              <span className="vm-badge ghost" style={{ marginTop: 6, display: 'inline-block', textTransform: 'capitalize' }}>{(user.role || '').replace('_', ' ')}</span>
+            </div>
+          </div>
+
           {success && <Alert variant="success">{success}</Alert>}
           {error && <Alert variant="danger">{error}</Alert>}
 

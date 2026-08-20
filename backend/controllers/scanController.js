@@ -4,6 +4,62 @@ const ScanResult = require('../models/ScanResult');
 const Vulnerability = require('../models/Vulnerability');
 const { runNmapScan, runBatchScan, getScanStats, validateIP, pingTest, enhancedConnectivityTest } = require('../services/scannerService');
 const progressTracker = require('../services/scanProgress');
+const { criticalityFactor } = require('../utils/risk');
+const enrichmentQueue = require('../services/enrichmentQueue');
+const { tagsFor } = require('../utils/compliance');
+const scanEngines = require('../services/scanEngines');
+
+// GET /api/scan/engines — which scan engines are available (nmap always; Nessus/
+// OpenVAS only when configured). Drives the engine picker in the UI.
+exports.getEngines = (req, res) => {
+  try { res.json({ engines: scanEngines.engineConfig() }); }
+  catch (err) { res.status(500).json({ message: 'Failed to read engines', error: err.message }); }
+};
+
+// Run an optional engine (nessus/openvas) against a target and persist findings.
+// Returns a response object on success, or throws so the caller can fall back.
+async function runEngineScan(engine, target, targetType) {
+  progressTracker.startScan(1, `Starting ${engine} scan for ${target.name}`);
+  const findings = await scanEngines.runEngine(engine, target.ip, {
+    onProgress: (p, m) => progressTracker.setProgress(p, m, { [`current${targetType === 'asset' ? 'Asset' : 'Device'}`]: target.name }),
+  });
+  progressTracker.setProgress(85, 'Saving findings...');
+  const { created, updated } = await scanEngines.persistFindings(findings, target, targetType);
+  target.lastScanDate = new Date();
+  await target.save();
+  progressTracker.complete(`${engine} scan completed for ${target.name}`);
+  return {
+    success: true, engine,
+    message: `${engine} scan completed for ${target.name}`,
+    [targetType]: { id: target._id, name: target.name, ip: target.ip },
+    scanSummary: { totalFindings: findings.length, newVulnerabilities: created, updatedVulnerabilities: updated },
+    newVulnerabilities: created,
+  };
+}
+
+/**
+ * Weight a scan's freshly-saved vulnerabilities by the target asset/device
+ * criticality, and refresh the target's detected-software fingerprint. Applied
+ * once per scan against the base riskScore, so it never compounds.
+ */
+async function applyCriticalityAndSoftware(target, targetField, savedResults, scanResults) {
+  const ids = savedResults.flatMap(sr => (sr.vulnerabilities || []).map(v => v._id)).filter(Boolean);
+  if (ids.length) {
+    const f = criticalityFactor(target.criticality);
+    await Vulnerability.updateMany(
+      { _id: { $in: ids } },
+      [{ $set: { riskScore: { $round: [{ $min: [10, { $multiply: [{ $ifNull: ['$riskScore', 0] }, f] }] }, 1] } } }]
+    );
+    // Refresh EPSS/KEV asynchronously so the scan response isn't blocked on APIs.
+    enrichmentQueue.enqueue(ids);
+  }
+  target.detectedSoftware = (scanResults || [])
+    .filter(r => r.state === 'open')
+    .map(r => ({
+      port: r.port, protocol: r.protocol, service: r.service,
+      product: r.product, version: r.version, cpe: r.cpe, lastSeen: new Date()
+    }));
+}
 
 /**
  * Enhanced Scan Controller with comprehensive vulnerability management
@@ -11,8 +67,8 @@ const progressTracker = require('../services/scanProgress');
 
 exports.scanAsset = async (req, res) => {
   try {
-    const { assetId, scanType = 'comprehensive' } = req.body;
-    
+    const { assetId, scanType = 'comprehensive', engine = 'nmap', fallback = true } = req.body;
+
     const asset = await Asset.findById(assetId);
     if (!asset) {
       return res.status(404).json({ message: 'Asset not found' });
@@ -20,6 +76,17 @@ exports.scanAsset = async (req, res) => {
 
     if (!validateIP(asset.ip)) {
       return res.status(400).json({ message: 'Invalid IP address format' });
+    }
+
+    // Optional engine (Nessus/OpenVAS). Falls back to nmap on failure unless disabled.
+    if (engine && engine !== 'nmap') {
+      try {
+        return res.json(await runEngineScan(engine, asset, 'asset'));
+      } catch (e) {
+        console.warn(`[scan] ${engine} failed for ${asset.ip}: ${e.message}`);
+        if (!fallback) { progressTracker.setError(`${engine}: ${e.message}`); return res.status(502).json({ success: false, engine, message: `${engine} scan failed`, error: e.message }); }
+        console.warn('[scan] falling back to nmap');
+      }
     }
 
     console.log(`Starting ${scanType} scan for asset: ${asset.name} (${asset.ip})`);
@@ -79,6 +146,9 @@ exports.scanAsset = async (req, res) => {
               existingVuln.severity = vulnDetail.severity || existingVuln.severity;
               existingVuln.description = vulnDetail.description || existingVuln.description;
               existingVuln.cvssScore = vulnDetail.cvssScore || existingVuln.cvssScore;
+              existingVuln.epssScore = vulnDetail.epssScore ?? existingVuln.epssScore;
+              existingVuln.knownExploited = vulnDetail.knownExploited ?? existingVuln.knownExploited;
+              existingVuln.riskScore = vulnDetail.riskScore || existingVuln.riskScore;
               existingVuln.remediation = vulnDetail.remediation || existingVuln.remediation;
               existingVuln.exploitAvailable = vulnDetail.exploitAvailable !== undefined ? vulnDetail.exploitAvailable : existingVuln.exploitAvailable;
               existingVuln.references = vulnDetail.references || existingVuln.references;
@@ -96,6 +166,9 @@ exports.scanAsset = async (req, res) => {
                 severity: vulnDetail.severity || 'Medium',
                 description: vulnDetail.description || 'Vulnerability detected during automated scan',
                 cvssScore: vulnDetail.cvssScore || 0,
+                epssScore: vulnDetail.epssScore ?? null,
+                knownExploited: vulnDetail.knownExploited || false,
+                riskScore: vulnDetail.riskScore || 0,
                 remediation: vulnDetail.remediation || 'Review vulnerability details and apply appropriate patches',
                 exploitAvailable: vulnDetail.exploitAvailable || false,
                 references: vulnDetail.references || [],
@@ -104,7 +177,8 @@ exports.scanAsset = async (req, res) => {
                 asset: asset._id,
                 scanResult: savedScanResult._id,
                 cpeMatch: scanResult.cpe,
-                affectedProducts: scanResult.product ? [scanResult.product] : []
+                affectedProducts: scanResult.product ? [scanResult.product] : [],
+                complianceTags: tagsFor({ service: scanResult.service, port: scanResult.port, severity: vulnDetail.severity, knownExploited: vulnDetail.knownExploited, exploitAvailable: vulnDetail.exploitAvailable, title: vulnDetail.title })
               });
               vulnerabilityIds.push(newVuln._id);
               createdVulnerabilities.push(newVuln);
@@ -124,6 +198,7 @@ exports.scanAsset = async (req, res) => {
       savedResults.push(populatedScanResult);
     }
 
+    await applyCriticalityAndSoftware(asset, 'asset', savedResults, scanResults);
     asset.lastScanDate = new Date();
     await asset.save();
 
@@ -164,7 +239,7 @@ exports.scanAsset = async (req, res) => {
 
 exports.scanDevice = async (req, res) => {
   try {
-    const { deviceId, scanType = 'comprehensive' } = req.body;
+    const { deviceId, scanType = 'comprehensive', engine = 'nmap', fallback = true } = req.body;
 
     const device = await NetworkDevice.findById(deviceId);
     if (!device) {
@@ -173,6 +248,16 @@ exports.scanDevice = async (req, res) => {
 
     if (!validateIP(device.ip)) {
       return res.status(400).json({ message: 'Invalid IP address format' });
+    }
+
+    if (engine && engine !== 'nmap') {
+      try {
+        return res.json(await runEngineScan(engine, device, 'device'));
+      } catch (e) {
+        console.warn(`[scan] ${engine} failed for ${device.ip}: ${e.message}`);
+        if (!fallback) { progressTracker.setError(`${engine}: ${e.message}`); return res.status(502).json({ success: false, engine, message: `${engine} scan failed`, error: e.message }); }
+        console.warn('[scan] falling back to nmap');
+      }
     }
 
     console.log(`Starting ${scanType} scan for device: ${device.name} (${device.ip})`);
@@ -232,6 +317,9 @@ exports.scanDevice = async (req, res) => {
               existingVuln.severity = vulnDetail.severity || existingVuln.severity;
               existingVuln.description = vulnDetail.description || existingVuln.description;
               existingVuln.cvssScore = vulnDetail.cvssScore || existingVuln.cvssScore;
+              existingVuln.epssScore = vulnDetail.epssScore ?? existingVuln.epssScore;
+              existingVuln.knownExploited = vulnDetail.knownExploited ?? existingVuln.knownExploited;
+              existingVuln.riskScore = vulnDetail.riskScore || existingVuln.riskScore;
               existingVuln.remediation = vulnDetail.remediation || existingVuln.remediation;
               existingVuln.exploitAvailable = vulnDetail.exploitAvailable !== undefined ? vulnDetail.exploitAvailable : existingVuln.exploitAvailable;
               existingVuln.references = vulnDetail.references || existingVuln.references;
@@ -250,6 +338,9 @@ exports.scanDevice = async (req, res) => {
                 severity: vulnDetail.severity || 'Medium',
                 description: vulnDetail.description || 'Vulnerability detected during automated scan',
                 cvssScore: vulnDetail.cvssScore || 0,
+                epssScore: vulnDetail.epssScore ?? null,
+                knownExploited: vulnDetail.knownExploited || false,
+                riskScore: vulnDetail.riskScore || 0,
                 remediation: vulnDetail.remediation || 'Review vulnerability details and apply appropriate patches',
                 exploitAvailable: vulnDetail.exploitAvailable || false,
                 references: vulnDetail.references || [],
@@ -259,7 +350,8 @@ exports.scanDevice = async (req, res) => {
                 device: device._id,
                 scanResult: savedScanResult._id,
                 cpeMatch: scanResult.cpe,
-                affectedProducts: scanResult.product ? [scanResult.product] : []
+                affectedProducts: scanResult.product ? [scanResult.product] : [],
+                complianceTags: tagsFor({ service: scanResult.service, port: scanResult.port, severity: vulnDetail.severity, knownExploited: vulnDetail.knownExploited, exploitAvailable: vulnDetail.exploitAvailable, title: vulnDetail.title })
               });
               vulnerabilityIds.push(newVuln._id);
               createdVulnerabilities.push(newVuln);
@@ -280,6 +372,7 @@ exports.scanDevice = async (req, res) => {
       savedResults.push(populatedScanResult);
     }
 
+    await applyCriticalityAndSoftware(device, 'device', savedResults, scanResults);
     device.lastScanDate = new Date();
     await device.save();
 
@@ -706,6 +799,9 @@ exports.runQuickScan = async (req, res) => {
                       severity: vulnDetail.severity || 'Medium',
                       description: vulnDetail.description || 'Vulnerability detected during quick scan',
                       cvssScore: vulnDetail.cvssScore || 0,
+                      epssScore: vulnDetail.epssScore ?? null,
+                      knownExploited: vulnDetail.knownExploited || false,
+                      riskScore: vulnDetail.riskScore || 0,
                       remediation: vulnDetail.remediation || 'Review and apply security patches',
                       exploitAvailable: vulnDetail.exploitAvailable || false,
                       references: vulnDetail.references || [],
@@ -716,7 +812,8 @@ exports.runQuickScan = async (req, res) => {
                         : { device: target._id }),
                       scanResult: savedScanResult._id,
                       cpeMatch: scanResult.cpe,
-                      affectedProducts: scanResult.product ? [scanResult.product] : []
+                      affectedProducts: scanResult.product ? [scanResult.product] : [],
+                complianceTags: tagsFor({ service: scanResult.service, port: scanResult.port, severity: vulnDetail.severity, knownExploited: vulnDetail.knownExploited, exploitAvailable: vulnDetail.exploitAvailable, title: vulnDetail.title })
                     });
                     allVulnerabilities.push(vulnerability);
                   }
@@ -1048,6 +1145,94 @@ exports.testBulkConnectivity = async (req, res) => {
       message: 'Bulk connectivity test failed',
       error: error.message 
     });
+  }
+};
+
+// ===========================================================================
+// Scan history + drift detection (compare a target's two most recent scans)
+// ===========================================================================
+const mongoose = require('mongoose');
+
+function targetMatch(targetType, targetId) {
+  const field = targetType === 'device' ? 'device' : 'asset';
+  return { [field]: new mongoose.Types.ObjectId(String(targetId)) };
+}
+// Group a scan by minute; tolerant of docs missing createdAt (older rows).
+const bucketKey = (d) => {
+  const dt = new Date(d);
+  return isNaN(dt.getTime()) ? null : dt.toISOString().slice(0, 16);
+};
+const rowTime = (r) => r.createdAt || r.scannedAt;
+
+// GET /api/scan/history?targetType=asset&targetId=...
+exports.getScanHistory = async (req, res) => {
+  try {
+    const { targetType, targetId } = req.query;
+    if (!targetId) return res.status(400).json({ message: 'targetId is required' });
+
+    const rows = await ScanResult.find(targetMatch(targetType, targetId))
+      .sort({ createdAt: -1 }).limit(3000).lean();
+
+    const groups = new Map();
+    for (const r of rows) {
+      const k = bucketKey(rowTime(r));
+      if (!k) continue;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(r);
+    }
+    const sessions = [...groups.entries()].map(([k, g]) => ({
+      session: k,
+      at: rowTime(g[0]),
+      ports: g.length,
+      openPorts: g.filter(r => r.state === 'open').length,
+      services: [...new Set(g.filter(r => r.state === 'open').map(r => r.service))],
+      vulnerabilities: g.reduce((s, r) => s + (r.vulnerabilities?.length || 0), 0),
+    })).slice(0, 50);
+
+    res.json({ targetType: targetType || 'asset', targetId, sessions });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to build scan history', error: err.message });
+  }
+};
+
+// GET /api/scan/delta?targetType=asset&targetId=...  -> diff of the two latest scans
+exports.getScanDelta = async (req, res) => {
+  try {
+    const { targetType, targetId } = req.query;
+    if (!targetId) return res.status(400).json({ message: 'targetId is required' });
+
+    const rows = await ScanResult.find(targetMatch(targetType, targetId))
+      .sort({ createdAt: -1 }).limit(3000).lean();
+
+    const groups = new Map();
+    for (const r of rows) {
+      const k = bucketKey(rowTime(r));
+      if (!k) continue;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(r);
+    }
+    const keys = [...groups.keys()];
+    if (keys.length < 2) {
+      return res.json({ message: 'Need at least two scans to compare', comparable: false });
+    }
+    const [curK, prevK] = keys;
+    const cur = groups.get(curK), prev = groups.get(prevK);
+    const openSet = (arr) => new Map(arr.filter(r => r.state === 'open').map(r => [`${r.port}/${r.protocol}`, r.service]));
+    const curOpen = openSet(cur), prevOpen = openSet(prev);
+
+    const newPorts = [...curOpen].filter(([p]) => !prevOpen.has(p)).map(([p, svc]) => ({ port: p, service: svc }));
+    const closedPorts = [...prevOpen].filter(([p]) => !curOpen.has(p)).map(([p, svc]) => ({ port: p, service: svc }));
+
+    res.json({
+      comparable: true,
+      current: { session: curK, at: rowTime(cur[0]), openPorts: curOpen.size },
+      previous: { session: prevK, at: rowTime(prev[0]), openPorts: prevOpen.size },
+      newPorts,
+      closedPorts,
+      drift: newPorts.length + closedPorts.length,
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to build scan delta', error: err.message });
   }
 };
 

@@ -19,6 +19,9 @@ import Settings from './pages/Settings';
 import SystemSettings from './pages/SystemSettings';
 import AccessControl from './pages/AccessControl';
 import SystemLogs from './pages/SystemLogs';
+import ScanScheduler from './pages/ScanScheduler';
+import SystemHealth from './pages/SystemHealth';
+import AssetDetail from './pages/AssetDetail';
 import AssetInventory from './pages/AssetInventory';
 import { useSocket } from './context/SocketContext';
 import ScanResultsModal from './components/ScanResultsModal';
@@ -168,10 +171,34 @@ const App = () => {
                       }
                     />
                     <Route
+                      path="/scan-scheduler"
+                      element={
+                        <PrivateRoute>
+                          <ScanScheduler />
+                        </PrivateRoute>
+                      }
+                    />
+                    <Route
+                      path="/system-health"
+                      element={
+                        <PrivateRoute>
+                          <SystemHealth />
+                        </PrivateRoute>
+                      }
+                    />
+                    <Route
                       path="/asset-inventory"
                       element={
                         <PrivateRoute>
                           <AssetInventory />
+                        </PrivateRoute>
+                      }
+                    />
+                    <Route
+                      path="/assets/:id"
+                      element={
+                        <PrivateRoute>
+                          <AssetDetail />
                         </PrivateRoute>
                       }
                     />

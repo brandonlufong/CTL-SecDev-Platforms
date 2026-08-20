@@ -44,8 +44,11 @@ import {
 } from 'react-icons/fa';
 import { AuthContext } from '../context/AuthContext';
 import config from '../config';
+import BsPagination from '../components/BsPagination';
+import { useT } from '../context/LanguageContext';
 
 const AccessControl = () => {
+  const t = useT();
   const { token } = useContext(AuthContext);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -99,6 +102,14 @@ const AccessControl = () => {
   // Audit Logs
   const [auditLogs, setAuditLogs] = useState([]);
   const [lastLogUpdate, setLastLogUpdate] = useState(new Date());
+
+  // Client-side pagination for the users + audit-log tables
+  const [acUsersPage, setAcUsersPage] = useState(1);
+  const [acUsersPerPage, setAcUsersPerPage] = useState(25);
+  const [acLogsPage, setAcLogsPage] = useState(1);
+  const [acLogsPerPage, setAcLogsPerPage] = useState(25);
+  useEffect(() => { setAcUsersPage(1); }, [users.length]);
+  useEffect(() => { setAcLogsPage(1); }, [auditLogs.length]);
   const [logFilters, setLogFilters] = useState({
     action: 'all',
     user: 'all',
@@ -594,7 +605,7 @@ const AccessControl = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((user) => (
+                  {users.slice((acUsersPage - 1) * acUsersPerPage, acUsersPage * acUsersPerPage).map((user) => (
                     <tr key={user._id}>
                       <td>
                         <div className="d-flex align-items-center">
@@ -666,6 +677,14 @@ const AccessControl = () => {
                   ))}
                 </tbody>
               </Table>
+              <BsPagination
+                currentPage={acUsersPage}
+                totalItems={users.length}
+                itemsPerPage={acUsersPerPage}
+                onPageChange={setAcUsersPage}
+                onPageSizeChange={(s) => { setAcUsersPerPage(s); setAcUsersPage(1); }}
+                label="users"
+              />
             </Card.Body>
           </Card>
         </Col>
@@ -1152,7 +1171,7 @@ const AccessControl = () => {
                       </td>
                     </tr>
                   ) : (
-                    auditLogs.map((log) => (
+                    auditLogs.slice((acLogsPage - 1) * acLogsPerPage, acLogsPage * acLogsPerPage).map((log) => (
                       <tr key={log._id}>
                         <td>
                           <small>{new Date(log.timestamp).toLocaleString()}</small>
@@ -1183,6 +1202,14 @@ const AccessControl = () => {
                   )}
                 </tbody>
               </Table>
+              <BsPagination
+                currentPage={acLogsPage}
+                totalItems={auditLogs.length}
+                itemsPerPage={acLogsPerPage}
+                onPageChange={setAcLogsPage}
+                onPageSizeChange={(s) => { setAcLogsPerPage(s); setAcLogsPage(1); }}
+                label="log entries"
+              />
             </Card.Body>
           </Card>
         </Col>
@@ -1205,9 +1232,9 @@ const AccessControl = () => {
     <div className="container mt-4" style={{ backgroundColor: '#F1F8FD', minHeight: '100vh' }}>
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h2 className="mb-1" style={{ color: '#1594EA', fontWeight: '600' }}>
-            <FaLock className="me-2" style={{ color: '#1594EA' }} />
-            Access Control
+          <h2 className="mb-1 vm-page-title">
+            <FaLock />
+            {t('Access Control')}
           </h2>
           <p className="text-muted mb-0">Manage roles, permissions, and access policies</p>
         </div>

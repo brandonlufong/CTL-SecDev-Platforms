@@ -60,6 +60,36 @@ const AssetSchema = new mongoose.Schema(
       enum: ['Private', 'Public'],
       default: 'Private',
     },
+    // ---- Enterprise asset context (Workstream C) ----
+    criticality: {
+      type: String,
+      enum: ['Critical', 'High', 'Medium', 'Low', 'Informational'],
+      default: 'Medium',
+      index: true,
+    },
+    environment: {
+      type: String,
+      enum: ['Production', 'Staging', 'Development', 'Testing', 'DR', 'Unknown'],
+      default: 'Production',
+    },
+    tags: {
+      type: [String],
+      default: [],
+      index: true,
+    },
+    businessOwner: { type: String, trim: true },
+    // Software fingerprint discovered by scans; feeds accurate CVE matching.
+    detectedSoftware: [
+      {
+        port: Number,
+        protocol: String,
+        service: String,
+        product: String,
+        version: String,
+        cpe: String,
+        lastSeen: { type: Date, default: Date.now },
+      },
+    ],
     activeProtocols: {
       type: [String],
       default: ['HTTP', 'HTTPS'],

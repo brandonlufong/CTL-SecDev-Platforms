@@ -14,7 +14,6 @@ import {
   Tab,
   Table,
   Modal,
-  Pagination,
   Dropdown,
   Nav,
   ProgressBar
@@ -51,8 +50,11 @@ import {
 } from 'react-icons/fa';
 import { AuthContext } from '../context/AuthContext';
 import config from '../config';
+import BsPagination from '../components/BsPagination';
+import { useT } from '../context/LanguageContext';
 
 const SystemLogs = () => {
+  const t = useT();
   const { token } = useContext(AuthContext);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -67,7 +69,7 @@ const SystemLogs = () => {
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const [logsPerPage] = useState(50);
+  const [logsPerPage, setLogsPerPage] = useState(25);
   const [totalLogs, setTotalLogs] = useState(0);
 
   // Filters
@@ -89,7 +91,7 @@ const SystemLogs = () => {
   useEffect(() => {
     fetchLogs();
     fetchLogStats();
-  }, [filters, currentPage]);
+  }, [filters, currentPage, logsPerPage]);
 
   const fetchLogs = async () => {
     try {
@@ -522,29 +524,14 @@ const SystemLogs = () => {
               </tbody>
             </Table>
             
-            {totalLogs > logsPerPage && (
-              <div className="d-flex justify-content-center mt-3">
-                <Pagination>
-                  <Pagination.Prev
-                    disabled={currentPage === 1}
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  />
-                  {[...Array(Math.ceil(totalLogs / logsPerPage))].map((_, index) => (
-                    <Pagination.Item
-                      key={index + 1}
-                      active={currentPage === index + 1}
-                      onClick={() => setCurrentPage(index + 1)}
-                    >
-                      {index + 1}
-                    </Pagination.Item>
-                  ))}
-                  <Pagination.Next
-                    disabled={currentPage === Math.ceil(totalLogs / logsPerPage)}
-                    onClick={() => setCurrentPage(prev => Math.min(Math.ceil(totalLogs / logsPerPage), prev + 1))}
-                  />
-                </Pagination>
-              </div>
-            )}
+            <BsPagination
+              currentPage={currentPage}
+              totalItems={totalLogs}
+              itemsPerPage={logsPerPage}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(s) => { setLogsPerPage(s); setCurrentPage(1); }}
+              label="logs"
+            />
           </>
         )}
       </Card.Body>
@@ -683,10 +670,10 @@ const SystemLogs = () => {
     <div className="container mt-4" style={{ backgroundColor: '#F1F8FD', minHeight: '100vh' }}>
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h2 className="mb-1" style={{ color: '#1F2937', fontWeight: '600' }}>
-            <FaHistory className="me-2" />
-            System Logs
-          </h2>
+          <h3 className="mb-1 vm-page-title">
+            <FaHistory />
+            {t('System Logs')}
+          </h3>
           <p className="text-muted mb-0">View and manage system logs and audit trails</p>
         </div>
         <div>

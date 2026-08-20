@@ -38,9 +38,11 @@ import {
   FaInfoCircle
 } from 'react-icons/fa';
 import { AuthContext } from '../context/AuthContext';
+import { useT } from '../context/LanguageContext';
 import config from '../config';
 
 const SystemSettings = () => {
+  const t = useT();
   const { token } = useContext(AuthContext);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -785,9 +787,9 @@ const getProgressBarVariant = (value, threshold) => {
       `}</style>
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h2 className="mb-1" style={{ color: '#1594EA', fontWeight: '600' }}>
-            <FaCog className="me-2" style={{ color: '#1594EA' }} />
-            System Settings
+          <h2 className="mb-1 vm-page-title">
+            <FaCog />
+            {t('System Settings')}
           </h2>
           <p className="text-muted mb-0">Configure and manage platform settings</p>
         </div>

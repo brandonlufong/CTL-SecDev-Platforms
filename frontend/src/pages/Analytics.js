@@ -1,417 +1,243 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Container, 
-  Row, 
-  Col, 
-  Card, 
-  Alert, 
-  Spinner,
-  Form,
-  InputGroup,
-  Badge,
-  Button
-} from 'react-bootstrap';
-import { 
-  FaChartBar, 
-  FaChartLine, 
-  FaChartPie, 
-  FaArrowUp, 
-  FaArrowDown,
-  FaShieldVirus,
-  FaServer,
-  FaNetworkWired,
-  FaCalendarAlt,
-  FaFilter,
-  FaSearch,
-  FaExclamationTriangle,
-  FaCheckCircle,
-  FaClock
-} from 'react-icons/fa';
-import { Line, Bar, Pie, Doughnut } from 'react-chartjs-2';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Line, Doughnut, Bar } from 'react-chartjs-2';
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend,
+  Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement,
+  BarElement, ArcElement, Title, Tooltip, Legend, Filler,
 } from 'chart.js';
-import axios from 'axios';
-import config from '../config';
+import {
+  FaShieldVirus, FaExclamationTriangle, FaBug, FaClock, FaFileDownload,
+  FaFileCsv, FaSyncAlt, FaFireAlt, FaChartBar,
+} from 'react-icons/fa';
+import {
+  getOverview, getTrends, getExposure, openReport, exportVulnerabilitiesCsv,
+} from '../api/platformApi';
+import { useT } from '../context/LanguageContext';
+import '../styles/theme.css';
 
 ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  BarElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend
+  CategoryScale, LinearScale, PointElement, LineElement, BarElement,
+  ArcElement, Title, Tooltip, Legend, Filler
 );
 
-const Analytics = () => {
-  const [analyticsData, setAnalyticsData] = useState(null);
+const SEV_COLORS = { Critical: '#b42318', High: '#d92d20', Medium: '#b54708', Low: '#475467' };
+
+function riskColor(score) {
+  if (score >= 9) return '#b42318';
+  if (score >= 7) return '#d92d20';
+  if (score >= 4) return '#b54708';
+  return '#475467';
+}
+
+const Kpi = ({ n, label, accent, icon }) => (
+  <div className="vm-kpi">
+    <div className="vm-kpi-accent" style={{ background: accent || 'var(--vm-primary)' }} />
+    <div className="vm-kpi-n" style={{ color: accent }}>{n}</div>
+    <div className="vm-kpi-l">{icon} {label}</div>
+  </div>
+);
+
+const SEVS = ['Critical', 'High', 'Medium', 'Low'];
+const CRITS = ['Critical', 'High', 'Medium', 'Low', 'Informational'];
+
+function Heatmap({ matrix }) {
+  const lookup = {};
+  let max = 0;
+  matrix.forEach((m) => {
+    const key = `${m._id.severity}|${m._id.criticality}`;
+    lookup[key] = m.count;
+    if (m.count > max) max = m.count;
+  });
+  const cellBg = (count) => {
+    if (!count) return 'var(--vm-surface-2)';
+    const t = Math.min(1, 0.15 + (count / (max || 1)) * 0.85);
+    return `rgba(180, 35, 24, ${t})`; // scale toward critical-red by density
+  };
+  return (
+    <div style={{ overflowX: 'auto', marginTop: 12 }}>
+      <table className="vm-table" style={{ tableLayout: 'fixed', minWidth: 520 }}>
+        <thead>
+          <tr>
+            <th style={{ width: 130 }}>Asset criticality ↓ / Severity →</th>
+            {SEVS.map((s) => <th key={s} style={{ textAlign: 'center' }}>{s}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {CRITS.map((c) => (
+            <tr key={c}>
+              <td style={{ fontWeight: 600 }}>{c}</td>
+              {SEVS.map((s) => {
+                const n = lookup[`${s}|${c}`] || 0;
+                return (
+                  <td key={s} style={{ textAlign: 'center', background: cellBg(n), color: n && (n / (max || 1)) > 0.5 ? '#fff' : 'var(--vm-text)', fontWeight: n ? 700 : 400, borderRadius: 6 }}>
+                    {n || '·'}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default function Analytics() {
+  const t = useT();
+  const [overview, setOverview] = useState(null);
+  const [trends, setTrends] = useState(null);
+  const [exposure, setExposure] = useState(null);
+  const [days, setDays] = useState(30);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [dateRange, setDateRange] = useState('30');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    fetchAnalyticsData();
-  }, [dateRange]);
-
-  const fetchAnalyticsData = async () => {
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
     try {
-      setLoading(true);
-      const response = await axios.get(`${config.API_BASE_URL}/api/analytics?range=${dateRange}`);
-      setAnalyticsData(response.data);
+      const [o, t, e] = await Promise.all([getOverview(), getTrends(days), getExposure()]);
+      setOverview(o); setTrends(t); setExposure(e);
     } catch (err) {
-      setError('Failed to fetch analytics data');
+      setError(err?.response?.data?.message || err.message || 'Failed to load analytics');
     } finally {
       setLoading(false);
     }
-  };
+  }, [days]);
 
-  const vulnerabilityTrendData = {
-    labels: analyticsData?.vulnerabilityTrend?.labels || [],
-    datasets: [
-      {
-        label: 'Critical',
-        data: analyticsData?.vulnerabilityTrend?.critical || [],
-        borderColor: '#dc3545',
-        backgroundColor: 'rgba(220, 53, 69, 0.1)',
-        tension: 0.4
-      },
-      {
-        label: 'High',
-        data: analyticsData?.vulnerabilityTrend?.high || [],
-        borderColor: '#fd7e14',
-        backgroundColor: 'rgba(253, 126, 20, 0.1)',
-        tension: 0.4
-      },
-      {
-        label: 'Medium',
-        data: analyticsData?.vulnerabilityTrend?.medium || [],
-        borderColor: '#0dcaf0',
-        backgroundColor: 'rgba(13, 202, 240, 0.1)',
-        tension: 0.4
-      },
-      {
-        label: 'Low',
-        data: analyticsData?.vulnerabilityTrend?.low || [],
-        borderColor: '#6c757d',
-        backgroundColor: 'rgba(108, 117, 125, 0.1)',
-        tension: 0.4
-      }
-    ]
-  };
+  useEffect(() => { load(); }, [load]);
 
-  const severityDistributionData = {
-    labels: ['Critical', 'High', 'Medium', 'Low'],
-    datasets: [
-      {
-        data: [
-          analyticsData?.severityDistribution?.critical || 0,
-          analyticsData?.severityDistribution?.high || 0,
-          analyticsData?.severityDistribution?.medium || 0,
-          analyticsData?.severityDistribution?.low || 0
-        ],
-        backgroundColor: ['#dc3545', '#fd7e14', '#0dcaf0', '#6c757d'],
-        borderWidth: 2,
-        borderColor: '#fff'
-      }
-    ]
-  };
-
-  const assetTypeData = {
-    labels: ['Servers', 'Network Devices', 'Workstations', 'Mobile Devices', 'IoT'],
-    datasets: [
-      {
-        data: [
-          analyticsData?.assetTypes?.servers || 0,
-          analyticsData?.assetTypes?.networkDevices || 0,
-          analyticsData?.assetTypes?.workstations || 0,
-          analyticsData?.assetTypes?.mobileDevices || 0,
-          analyticsData?.assetTypes?.iot || 0
-        ],
-        backgroundColor: ['#1594EA', '#0D6EBD', '#0A5CBF', '#074A9D', '#05387A'],
-        borderWidth: 2,
-        borderColor: '#fff'
-      }
-    ]
-  };
-
-  
-  if (loading) {
+  if (loading && !overview) {
+    return <div className="vm-page" style={{ padding: 40 }}><p style={{ color: 'var(--vm-text-muted)' }}>Loading analytics…</p></div>;
+  }
+  if (error) {
     return (
-      <div className="container mt-4" style={{ backgroundColor: '#F1F8FD', minHeight: '100vh' }}>
-        <div className="text-center py-5">
-          <Spinner animation="border" className="text-primary" />
-          <p className="text-muted mt-2">Loading analytics data...</p>
+      <div className="vm-page" style={{ padding: 40 }}>
+        <div className="vm-card" style={{ borderColor: 'var(--vm-high)' }}>
+          <strong style={{ color: 'var(--vm-high)' }}>Could not load analytics.</strong>
+          <div style={{ color: 'var(--vm-text-muted)', marginTop: 6 }}>{error}</div>
+          <button className="vm-badge ghost" style={{ marginTop: 12, cursor: 'pointer' }} onClick={load}>Retry</button>
         </div>
       </div>
     );
   }
 
+  const sev = overview?.severity || {};
+  const trendSeries = trends?.series || [];
+
+  const doughnut = {
+    labels: ['Critical', 'High', 'Medium', 'Low'],
+    datasets: [{
+      data: [sev.Critical || 0, sev.High || 0, sev.Medium || 0, sev.Low || 0],
+      backgroundColor: [SEV_COLORS.Critical, SEV_COLORS.High, SEV_COLORS.Medium, SEV_COLORS.Low],
+      borderWidth: 0,
+    }],
+  };
+
+  const lineData = {
+    labels: trendSeries.map(p => p.date.slice(5)),
+    datasets: [
+      { label: 'Discovered', data: trendSeries.map(p => p.discovered), borderColor: '#d92d20', backgroundColor: 'rgba(217,45,32,.12)', fill: true, tension: .3 },
+      { label: 'Remediated', data: trendSeries.map(p => p.remediated), borderColor: '#067647', backgroundColor: 'rgba(6,118,71,.12)', fill: true, tension: .3 },
+    ],
+  };
+
+  const envData = {
+    labels: (exposure?.byEnvironment || []).map(e => e._id || 'Unknown'),
+    datasets: [
+      { label: 'Findings', data: (exposure?.byEnvironment || []).map(e => e.findings), backgroundColor: '#2f6bff' },
+      { label: 'Known-exploited', data: (exposure?.byEnvironment || []).map(e => e.kev), backgroundColor: '#7a2e0e' },
+    ],
+  };
+
+  const chartOpts = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { color: '#8891a5' } } },
+    scales: { x: { ticks: { color: '#8891a5' } }, y: { ticks: { color: '#8891a5' }, beginAtZero: true } },
+  };
+
   return (
-    <div className="container mt-4" style={{ backgroundColor: '#F1F8FD', minHeight: '100vh' }}>
-      <div className="d-flex justify-content-between align-items-center mb-4">
+    <div className="vm-page" style={{ padding: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
         <div>
-          <h3 className="mb-2" style={{ color: '#1594EA' }}>
-            <FaChartBar className="me-2" />
-            Platform Analytics
-          </h3>
-          <p className="text-muted mb-0">Advanced security insights and trends</p>
+          <h1 className="vm-page-title"><FaChartBar /> {t('Security Analytics')}</h1>
+          <p className="vm-section-sub" style={{ margin: 0 }}>Risk posture, remediation trends and exposure across your estate</p>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="vm-badge ghost" style={{ cursor: 'pointer' }} onClick={load} title="Refresh"><FaSyncAlt /> Refresh</button>
+          <button className="vm-badge ghost" style={{ cursor: 'pointer' }} onClick={() => { setBusy(true); exportVulnerabilitiesCsv().finally(() => setBusy(false)); }} disabled={busy}><FaFileCsv /> Export CSV</button>
+          <button className="vm-badge" style={{ cursor: 'pointer', background: 'var(--vm-primary)', color: '#fff' }} onClick={openReport}><FaFileDownload /> Report</button>
         </div>
       </div>
 
-      {error && <Alert variant="danger" dismissible onClose={() => setError('')}>{error}</Alert>}
+      <div className="vm-kpi-grid" style={{ marginBottom: 20 }}>
+        <Kpi n={overview?.totals?.open ?? 0} label={<><FaBug /> Open findings</>} accent="var(--vm-primary)" />
+        <Kpi n={sev.Critical || 0} label={<><FaExclamationTriangle /> Critical</>} accent={SEV_COLORS.Critical} />
+        <Kpi n={sev.High || 0} label={<><FaShieldVirus /> High</>} accent={SEV_COLORS.High} />
+        <Kpi n={overview?.exploitability?.kevOpen ?? 0} label={<><FaFireAlt /> Known-exploited</>} accent="var(--vm-kev)" />
+        <Kpi n={overview?.exploitability?.slaBreached ?? 0} label={<><FaClock /> SLA breached</>} accent={SEV_COLORS.Medium} />
+        <Kpi n={overview?.meanTimeToRemediateDays ?? '—'} label="Mean time to remediate (d)" accent="var(--vm-success)" />
+      </div>
 
-      {/* Key Metrics */}
-      <Row className="mb-4">
-        <Col md={3}>
-          <Card className="text-center h-100 border-0 shadow-sm">
-            <Card.Body className="py-3">
-              <FaShieldVirus size={32} className="text-danger mb-2" />
-              <h3 className="mb-1">{analyticsData?.totalVulnerabilities || 0}</h3>
-              <p className="text-muted mb-0">Total Vulnerabilities</p>
-              <Badge bg="danger" className="mt-2">
-                <FaArrowUp className="me-1" />
-                +12% this month
-              </Badge>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col md={3}>
-          <Card className="text-center h-100 border-0 shadow-sm">
-            <Card.Body className="py-3">
-              <FaServer size={32} className="text-primary mb-2" />
-              <h3 className="mb-1">{analyticsData?.totalAssets || 0}</h3>
-              <p className="text-muted mb-0">Total Assets</p>
-              <Badge bg="success" className="mt-2">
-                <FaArrowUp className="me-1" />
-                +5% this month
-              </Badge>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col md={3}>
-          <Card className="text-center h-100 border-0 shadow-sm">
-            <Card.Body className="py-3">
-              <FaCheckCircle size={32} className="text-success mb-2" />
-              <h3 className="mb-1">{analyticsData?.resolvedVulnerabilities || 0}</h3>
-              <p className="text-muted mb-0">Resolved Issues</p>
-              <Badge bg="success" className="mt-2">
-                <FaArrowUp className="me-1" />
-                +18% this month
-              </Badge>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col md={3}>
-          <Card className="text-center h-100 border-0 shadow-sm">
-            <Card.Body className="py-3">
-              <FaExclamationTriangle size={32} className="text-warning mb-2" />
-              <h3 className="mb-1">{analyticsData?.criticalIssues || 0}</h3>
-              <p className="text-muted mb-0">Critical Issues</p>
-              <Badge bg="warning" className="mt-2">
-                <FaArrowDown className="me-1" />
-                -8% this month
-              </Badge>
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, marginBottom: 16 }}>
+        <div className="vm-card">
+          <div className="vm-section-title">Discovered vs Remediated</div>
+          <div className="vm-section-sub">
+            Last{' '}
+            <select value={days} onChange={e => setDays(Number(e.target.value))} style={{ background: 'var(--vm-surface-2)', color: 'var(--vm-text)', border: '1px solid var(--vm-border)', borderRadius: 6, padding: '2px 6px' }}>
+              <option value={7}>7</option><option value={30}>30</option><option value={90}>90</option>
+            </select>{' '}days
+          </div>
+          <div style={{ height: 260 }}><Line data={lineData} options={chartOpts} /></div>
+        </div>
+        <div className="vm-card">
+          <div className="vm-section-title">Severity mix</div>
+          <div className="vm-section-sub">Open findings by severity</div>
+          <div style={{ height: 260 }}><Doughnut data={doughnut} options={{ ...chartOpts, scales: {} }} /></div>
+        </div>
+      </div>
 
-      {/* Filters */}
-      <Card className="mb-4 border-0 shadow-sm">
-        <Card.Header className="bg-white py-3">
-          <h6 className="mb-0">
-            <FaFilter className="me-2" />
-            Analytics Filters
-          </h6>
-        </Card.Header>
-        <Card.Body>
-          <Row>
-            <Col md={4}>
-              <InputGroup>
-                <InputGroup.Text>
-                  <FaSearch />
-                </InputGroup.Text>
-                <Form.Control
-                  placeholder="Search analytics..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </InputGroup>
-            </Col>
-            <Col md={3}>
-              <Form.Select value={dateRange} onChange={(e) => setDateRange(e.target.value)}>
-                <option value="7">Last 7 days</option>
-                <option value="30">Last 30 days</option>
-                <option value="90">Last 90 days</option>
-                <option value="365">Last year</option>
-              </Form.Select>
-            </Col>
-            <Col md={2}>
-              <Button variant="outline-secondary" onClick={fetchAnalyticsData} className="w-100">
-                <FaFilter className="me-2" />
-                Refresh
-              </Button>
-            </Col>
-          </Row>
-        </Card.Body>
-      </Card>
+      {/* Severity x asset-criticality heatmap */}
+      <div className="vm-card" style={{ marginBottom: 16 }}>
+        <div className="vm-section-title">Exposure heatmap</div>
+        <div className="vm-section-sub">Open findings by severity × asset criticality — focus top-left first</div>
+        <Heatmap matrix={exposure?.matrix || []} />
+      </div>
 
-      {/* Charts Row 1 */}
-      <Row className="mb-4">
-        <Col md={8}>
-          <Card className="border-0 shadow-sm">
-            <Card.Header className="bg-white py-3">
-              <h6 className="mb-0">
-                <FaChartLine className="me-2" />
-                Vulnerability Trend Analysis
-              </h6>
-            </Card.Header>
-            <Card.Body>
-              <Line 
-                key="vulnerability-trend-chart"
-                data={vulnerabilityTrendData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: {
-                      position: 'bottom'
-                    }
-                  },
-                  scales: {
-                    y: {
-                      beginAtZero: true
-                    }
-                  }
-                }}
-              />
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col md={4}>
-          <Card className="border-0 shadow-sm">
-            <Card.Header className="bg-white py-3">
-              <h6 className="mb-0">
-                <FaChartPie className="me-2" />
-                Severity Distribution
-              </h6>
-            </Card.Header>
-            <Card.Body>
-              <Doughnut 
-                key="severity-distribution-chart"
-                data={severityDistributionData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: {
-                      position: 'bottom'
-                    }
-                  }
-                }}
-              />
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
-
-      {/* Charts Row 2 */}
-      <Row className="mb-4">
-        <Col md={6}>
-          <Card className="border-0 shadow-sm">
-            <Card.Header className="bg-white py-3">
-              <h6 className="mb-0">
-                <FaServer className="me-2" />
-                Asset Type Distribution
-              </h6>
-            </Card.Header>
-            <Card.Body>
-              <Pie 
-                key="asset-type-pie-chart"
-                data={assetTypeData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: {
-                      position: 'bottom'
-                    }
-                  }
-                }}
-              />
-            </Card.Body>
-          </Card>
-        </Col>
-              </Row>
-
-      {/* Risk Assessment Summary */}
-      <Card className="border-0 shadow-sm">
-        <Card.Header className="bg-white py-3">
-          <h6 className="mb-0">
-            <FaExclamationTriangle className="me-2" />
-            Risk Assessment Summary
-          </h6>
-        </Card.Header>
-        <Card.Body>
-          <Row>
-            <Col md={3}>
-              <div className="text-center p-3">
-                <div className="rounded-circle bg-danger text-white d-flex align-items-center justify-content-center mx-auto mb-2" 
-                     style={{ width: '60px', height: '60px', fontSize: '24px' }}>
-                  HIGH
-                </div>
-                <h5>High Risk</h5>
-                <p className="text-muted">{analyticsData?.riskAssessment?.high || 0} assets require immediate attention</p>
-              </div>
-            </Col>
-            <Col md={3}>
-              <div className="text-center p-3">
-                <div className="rounded-circle bg-warning text-white d-flex align-items-center justify-content-center mx-auto mb-2" 
-                     style={{ width: '60px', height: '60px', fontSize: '24px' }}>
-                  MED
-                </div>
-                <h5>Medium Risk</h5>
-                <p className="text-muted">{analyticsData?.riskAssessment?.medium || 0} assets need monitoring</p>
-              </div>
-            </Col>
-            <Col md={3}>
-              <div className="text-center p-3">
-                <div className="rounded-circle bg-info text-white d-flex align-items-center justify-content-center mx-auto mb-2" 
-                     style={{ width: '60px', height: '60px', fontSize: '24px' }}>
-                  LOW
-                </div>
-                <h5>Low Risk</h5>
-                <p className="text-muted">{analyticsData?.riskAssessment?.low || 0} assets are secure</p>
-              </div>
-            </Col>
-            <Col md={3}>
-              <div className="text-center p-3">
-                <div className="rounded-circle bg-success text-white d-flex align-items-center justify-content-center mx-auto mb-2" 
-                     style={{ width: '60px', height: '60px', fontSize: '24px' }}>
-                  OK
-                </div>
-                <h5>Compliant</h5>
-                <p className="text-muted">{analyticsData?.riskAssessment?.compliant || 0} assets meet standards</p>
-              </div>
-            </Col>
-          </Row>
-        </Card.Body>
-      </Card>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 16 }}>
+        <div className="vm-card">
+          <div className="vm-section-title">Exposure by environment</div>
+          <div className="vm-section-sub">Findings and known-exploited counts</div>
+          <div style={{ height: 260 }}><Bar data={envData} options={chartOpts} /></div>
+        </div>
+        <div className="vm-card">
+          <div className="vm-section-title">Top risky assets</div>
+          <div className="vm-section-sub">Highest blended risk (CVSS × EPSS × KEV × criticality)</div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="vm-table">
+              <thead><tr><th>Asset</th><th>IP</th><th>Crit.</th><th>Findings</th><th>KEV</th><th>Max risk</th></tr></thead>
+              <tbody>
+                {(overview?.topRiskyAssets || []).map(a => (
+                  <tr key={a._id}>
+                    <td>{a.name}</td>
+                    <td style={{ color: 'var(--vm-text-muted)' }}>{a.ip}</td>
+                    <td><span className="vm-badge ghost">{a.criticality}</span></td>
+                    <td>{a.findings}</td>
+                    <td>{a.kev > 0 ? <span className="vm-badge kev">{a.kev}</span> : '—'}</td>
+                    <td>
+                      <span className="vm-risk">
+                        <span className="vm-risk-bar"><span className="vm-risk-fill" style={{ width: `${(a.maxRisk / 10) * 100}%`, background: riskColor(a.maxRisk) }} /></span>
+                        <strong style={{ color: riskColor(a.maxRisk) }}>{a.maxRisk}</strong>
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {(!overview?.topRiskyAssets || overview.topRiskyAssets.length === 0) && (
+                  <tr><td colSpan={6} style={{ color: 'var(--vm-text-muted)' }}>No open findings yet — run a scan to populate analytics.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
   );
-};
-
-export default Analytics;
+}

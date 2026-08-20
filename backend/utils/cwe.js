@@ -1,0 +1,77 @@
+/**
+ * Common CWE id -> short weakness name. Used to build readable vulnerability
+ * titles like "OpenSSH Improper Authentication" instead of a bare CVE id.
+ * Not exhaustive — just the weaknesses that show up most in network scans.
+ */
+const CWE_NAMES = {
+  'CWE-20': 'Improper Input Validation',
+  'CWE-22': 'Path Traversal',
+  'CWE-78': 'OS Command Injection',
+  'CWE-79': 'Cross-site Scripting',
+  'CWE-89': 'SQL Injection',
+  'CWE-94': 'Code Injection',
+  'CWE-119': 'Memory Buffer Error',
+  'CWE-120': 'Buffer Overflow',
+  'CWE-125': 'Out-of-bounds Read',
+  'CWE-190': 'Integer Overflow',
+  'CWE-200': 'Information Exposure',
+  'CWE-203': 'Observable Discrepancy',
+  'CWE-209': 'Information Exposure Through an Error Message',
+  'CWE-250': 'Execution with Unnecessary Privileges',
+  'CWE-252': 'Unchecked Return Value',
+  'CWE-254': 'Security Features Weakness',
+  'CWE-264': 'Permissions, Privileges, and Access Control',
+  'CWE-269': 'Improper Privilege Management',
+  'CWE-276': 'Incorrect Default Permissions',
+  'CWE-287': 'Improper Authentication',
+  'CWE-290': 'Authentication Bypass by Spoofing',
+  'CWE-294': 'Authentication Bypass by Capture-replay',
+  'CWE-295': 'Improper Certificate Validation',
+  'CWE-306': 'Missing Authentication',
+  'CWE-311': 'Missing Encryption of Sensitive Data',
+  'CWE-319': 'Cleartext Transmission of Sensitive Information',
+  'CWE-326': 'Inadequate Encryption Strength',
+  'CWE-327': 'Use of a Broken or Risky Cryptographic Algorithm',
+  'CWE-330': 'Use of Insufficiently Random Values',
+  'CWE-345': 'Insufficient Verification of Data Authenticity',
+  'CWE-352': 'Cross-Site Request Forgery',
+  'CWE-354': 'Improper Validation of Integrity Check Value',
+  'CWE-59': 'Link Following',
+  'CWE-77': 'Command Injection',
+  'CWE-284': 'Improper Access Control',
+  'CWE-347': 'Improper Verification of Cryptographic Signature',
+  'CWE-362': 'Race Condition',
+  'CWE-364': 'Signal Handler Race Condition',
+  'CWE-426': 'Untrusted Search Path',
+  'CWE-427': 'Uncontrolled Search Path Element',
+  'CWE-668': 'Exposure of Resource to Wrong Sphere',
+  'CWE-706': 'Use of Incorrectly-Resolved Name or Reference',
+  'CWE-367': 'Time-of-check Time-of-use Race Condition',
+  'CWE-400': 'Uncontrolled Resource Consumption',
+  'CWE-401': 'Missing Release of Memory',
+  'CWE-415': 'Double Free',
+  'CWE-416': 'Use After Free',
+  'CWE-434': 'Unrestricted Upload of Dangerous File Type',
+  'CWE-476': 'NULL Pointer Dereference',
+  'CWE-502': 'Deserialization of Untrusted Data',
+  'CWE-522': 'Insufficiently Protected Credentials',
+  'CWE-611': 'XML External Entity Reference',
+  'CWE-613': 'Insufficient Session Expiration',
+  'CWE-732': 'Incorrect Permission Assignment',
+  'CWE-763': 'Release of Invalid Pointer',
+  'CWE-770': 'Allocation of Resources Without Limits',
+  'CWE-772': 'Missing Release of Resource',
+  'CWE-787': 'Out-of-bounds Write',
+  'CWE-798': 'Use of Hard-coded Credentials',
+  'CWE-862': 'Missing Authorization',
+  'CWE-863': 'Incorrect Authorization',
+  'CWE-908': 'Use of Uninitialized Resource',
+  'CWE-918': 'Server-Side Request Forgery',
+};
+
+function cweName(id) {
+  if (!id) return null;
+  return CWE_NAMES[id] || null;
+}
+
+module.exports = { CWE_NAMES, cweName };

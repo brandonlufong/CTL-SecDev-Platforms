@@ -1,0 +1,193 @@
+/*
+ * Design tokens + modern UI primitives (Workstream G).
+ * Layered on top of Bootstrap. Dark mode is driven by ThemeContext, which sets
+ * `body.bg-dark`; we mirror that with CSS variables so components restyle
+ * automatically without per-component dark props.
+ */
+
+:root {
+  /* Palette aligned to the existing CAMTEL brand (primary #1594EA). */
+  --vm-bg: #f1f8fd;
+  --vm-surface: #ffffff;
+  --vm-surface-2: #f2f6fb;
+  /* Soft, faintly-tinted hairline instead of a generic gray border */
+  --vm-border: rgba(16, 42, 73, 0.09);
+  --vm-text: #14243b;
+  --vm-text-muted: #64748b;
+  --vm-primary: #1594ea;
+  --vm-primary-dark: #0d6ebd;
+  --vm-primary-weak: #eef7ff;
+  --vm-gradient: linear-gradient(135deg, #1594ea 0%, #0d6ebd 100%);
+  /* Cinematic, GPU-safe motion curve (easeOutExpo-ish) */
+  --vm-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --vm-critical: #b42318;
+  --vm-high: #d92d20;
+  --vm-medium: #b54708;
+  --vm-low: #475467;
+  --vm-info: #6b7280;
+  --vm-success: #067647;
+  --vm-kev: #7a2e0e;
+
+  /* Slightly larger radii for premium depth */
+  --vm-radius: 14px;
+  --vm-radius-sm: 10px;
+  /* Layered, low-opacity shadows — depth without harsh dark drop-shadows */
+  --vm-shadow: 0 1px 2px rgba(16, 42, 73, .05), 0 10px 24px -14px rgba(16, 42, 73, .16);
+  --vm-shadow-lg: 0 2px 6px rgba(16, 42, 73, .06), 0 28px 56px -22px rgba(16, 42, 73, .28);
+  /* Inset top highlight for the "double-bezel" premium surface */
+  --vm-bezel: inset 0 1px 0 rgba(255, 255, 255, .7);
+}
+
+body.bg-dark {
+  --vm-bg: #0b1119;
+  --vm-surface: #141b26;
+  --vm-surface-2: #1b2431;
+  --vm-border: rgba(255, 255, 255, 0.08);
+  --vm-text: #e8edf6;
+  --vm-text-muted: #94a3b8;
+  --vm-primary: #3ba5f0;
+  --vm-primary-dark: #1594ea;
+  --vm-primary-weak: #14273b;
+  --vm-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 28px -16px rgba(0, 0, 0, .6);
+  --vm-shadow-lg: 0 2px 8px rgba(0, 0, 0, .4), 0 30px 60px -24px rgba(0, 0, 0, .7);
+  --vm-bezel: inset 0 1px 0 rgba(255, 255, 255, .05);
+}
+
+/* ---- Cards ---- */
+.vm-card {
+  background: var(--vm-surface);
+  border: 1px solid var(--vm-border);
+  border-radius: var(--vm-radius);
+  box-shadow: var(--vm-shadow), var(--vm-bezel);
+  color: var(--vm-text);
+  padding: 24px;
+  transition: box-shadow .4s var(--vm-ease), border-color .4s var(--vm-ease);
+}
+.vm-card:hover { box-shadow: var(--vm-shadow-lg), var(--vm-bezel); }
+.vm-card h1, .vm-card h2, .vm-card h3 { color: var(--vm-text); }
+
+/* ---- KPI tiles ---- */
+.vm-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+}
+.vm-kpi {
+  background: var(--vm-surface);
+  border: 1px solid var(--vm-border);
+  border-radius: var(--vm-radius);
+  box-shadow: var(--vm-shadow), var(--vm-bezel);
+  padding: 22px 24px;
+  transition: transform .45s var(--vm-ease), box-shadow .45s var(--vm-ease);
+  will-change: transform;
+}
+.vm-kpi:hover { transform: translateY(-3px); box-shadow: var(--vm-shadow-lg), var(--vm-bezel); }
+.vm-kpi .vm-kpi-n { font-size: 30px; font-weight: 700; line-height: 1.1; color: var(--vm-text); }
+.vm-kpi .vm-kpi-l { font-size: 13px; color: var(--vm-text-muted); margin-top: 4px; }
+.vm-kpi .vm-kpi-accent { width: 34px; height: 4px; border-radius: 4px; margin-bottom: 12px; background: var(--vm-primary); }
+
+/* ---- Severity + status badges ---- */
+.vm-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  border: 1px solid transparent;
+}
+.vm-badge.critical { color: #fff; background: var(--vm-critical); }
+.vm-badge.high { color: #fff; background: var(--vm-high); }
+.vm-badge.medium { color: #fff; background: var(--vm-medium); }
+.vm-badge.low { color: #fff; background: var(--vm-low); }
+.vm-badge.info { color: var(--vm-text); background: var(--vm-surface-2); border-color: var(--vm-border); }
+.vm-badge.kev { color: #fff; background: var(--vm-kev); }
+.vm-badge.ghost { color: var(--vm-text-muted); background: var(--vm-surface-2); border-color: var(--vm-border); }
+
+/* ---- Tables ---- */
+/* Native Bootstrap-like tables to match the Server Assets page */
+.vm-table { width: 100%; border-collapse: collapse; color: var(--vm-text); }
+.vm-table th, .vm-table td { text-align: left; padding: 0.5rem 0.5rem; border-bottom: 1px solid var(--vm-border); font-size: 0.95rem; vertical-align: middle; }
+.vm-table th { color: var(--vm-text); font-weight: 600; }
+.vm-table tbody tr:hover { background: var(--vm-surface-2); }
+
+/* ---- Risk meter ---- */
+.vm-risk { display: inline-flex; align-items: center; gap: 8px; }
+.vm-risk-bar { width: 60px; height: 6px; border-radius: 6px; background: var(--vm-surface-2); overflow: hidden; }
+.vm-risk-fill { height: 100%; border-radius: 6px; }
+
+/* ---- Section headers ---- */
+.vm-section-title { font-size: 16px; font-weight: 700; color: var(--vm-text); margin: 0 0 4px; }
+.vm-link { transition: color .2s var(--vm-ease); }
+.vm-link:hover { color: var(--vm-primary); }
+.vm-section-sub { font-size: 13px; color: var(--vm-text-muted); margin: 0 0 16px; }
+
+/* Cinematic entrance: cards ease up into place on mount (reduced-motion safe) */
+@keyframes vmFadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.vm-card, .vm-kpi { animation: vmFadeUp .5s var(--vm-ease) both; }
+.vm-kpi-grid > .vm-kpi:nth-child(2) { animation-delay: .04s; }
+.vm-kpi-grid > .vm-kpi:nth-child(3) { animation-delay: .08s; }
+.vm-kpi-grid > .vm-kpi:nth-child(4) { animation-delay: .12s; }
+.vm-kpi-grid > .vm-kpi:nth-child(5) { animation-delay: .16s; }
+.vm-kpi-grid > .vm-kpi:nth-child(6) { animation-delay: .20s; }
+@media (prefers-reduced-motion: reduce) {
+  .vm-card, .vm-kpi { animation: none; }
+  .vm-kpi:hover, .card:hover, .btn:hover { transform: none; }
+}
+
+/* ---- Unified page shell (every page uses this — consistent framing + themed
+   background so dark mode never shows a white/blue page). Full-width with a
+   comfortable max content width so it feels premium on wide screens. ---- */
+.vm-page, .vm-page-shell {
+  background: var(--vm-bg);
+  min-height: 100vh;
+  padding: clamp(1rem, 0.8rem + 1.2vw, 2rem);
+  max-width: 1720px;
+  margin: 0 auto;
+  width: 100%;
+}
+@media (max-width: 640px) { .vm-page, .vm-page-shell { padding: 0.9rem; } }
+/* ---- Canonical page title: identical on EVERY page (icon + text) ---- */
+.vm-page-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--vm-primary) !important;
+  font-size: 1.5rem !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.02em !important;
+  line-height: 1.2;
+  margin: 0 0 0.35rem !important;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+.vm-page-title svg { font-size: 1.05em; flex-shrink: 0; }
+/* Canonical page subtitle / lede under the title */
+.vm-page-sub, .vm-section-sub, .vm-page + p .text-muted {
+  color: var(--vm-text-muted);
+  font-size: 0.9rem;
+  margin: 0 0 1rem;
+}
+
+/* ---- Pagination ---- */
+.vm-pager {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px; padding: 12px 16px;
+  border-top: 1px solid var(--vm-border); color: var(--vm-text-muted); font-size: 13px;
+}
+.vm-pager-info { display: flex; align-items: center; gap: 10px; }
+.vm-pager-info strong { color: var(--vm-text); }
+.vm-pager-size {
+  background: var(--vm-surface-2); color: var(--vm-text);
+  border: 1px solid var(--vm-border); border-radius: 8px; padding: 4px 8px;
+}
+.vm-pager-btns { display: flex; align-items: center; gap: 4px; }
+.vm-pager-btn {
+  min-width: 32px; height: 32px; padding: 0 8px;
+  background: var(--vm-surface); color: var(--vm-text);
+  border: 1px solid var(--vm-border); border-radius: 8px; cursor: pointer;
+  font-size: 13px; line-height: 1;
+}
+.vm-pager-btn:hover:not(:disabled) { border-color: var(--vm-primary); color: var(--vm-primary); }
+.vm-pager-btn.active { background: var(--vm-primary); border-color: var(--vm-primary); color: #fff; font-weight: 600; }
+.vm-pager-btn:disabled { opacity: .45; cursor: not-allowed; }
+.vm-pager-ellipsis { color: var(--vm-text-muted); padding: 0 2px; }

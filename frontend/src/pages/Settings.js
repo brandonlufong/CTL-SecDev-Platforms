@@ -1,8 +1,12 @@
 import React, { useContext } from 'react';
 import { Container, Form, Button, Card } from 'react-bootstrap';
+import { FaCog } from 'react-icons/fa';
+import { useT } from '../context/LanguageContext';
 import { ThemeContext } from '../context/ThemeContext';
+import '../styles/theme.css';
 
 const Settings = () => {
+  const t = useT();
   const handlePasswordChange = e => {
     e.preventDefault();
     alert('Password change submitted (not functional yet)');
@@ -12,7 +16,7 @@ const Settings = () => {
 
   return (
     <Container className="py-4">
-      <h3 className="mb-4">Settings</h3>
+      <h3 className="mb-4 vm-page-title"><FaCog /> {t('Settings')}</h3>
 
       <Card className="mb-4">
         <Card.Body>

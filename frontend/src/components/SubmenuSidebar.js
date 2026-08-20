@@ -9,6 +9,7 @@ import {
   FaChevronLeft
 } from 'react-icons/fa';
 import { AuthContext } from '../context/AuthContext';
+import { useT } from '../context/LanguageContext';
 import { getNavigationItems } from '../config/navigationConfig';
 
 const SubmenuSidebar = ({ 
@@ -18,6 +19,7 @@ const SubmenuSidebar = ({
   categories 
 }) => {
   const { user } = useContext(AuthContext);
+  const t = useT();
   const location = useLocation();
 
   const navigationItems = getNavigationItems(user?.role);
@@ -57,7 +59,7 @@ const SubmenuSidebar = ({
         onClick={() => onClose()}
       >
         <Icon size={16} style={{ minWidth: '16px' }} />
-        <span className="flex-grow-1">{item.name}</span>
+        <span className="flex-grow-1">{t(item.name)}</span>
         {item.badge && (
           <Badge 
             bg={item.badge === 'Live' ? 'success' : item.badge === 'New' ? 'info' : 'danger'}
@@ -130,7 +132,7 @@ const SubmenuSidebar = ({
                 fontWeight: '600' 
               }}
             >
-              {activeCategoryData.category}
+              {t(activeCategoryData.category)}
             </h5>
             <small style={{ color: '#6B7280', fontSize: '0.75rem' }}>
               {activeCategoryData.items.length} items

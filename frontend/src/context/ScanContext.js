@@ -15,7 +15,7 @@ export const useScan = () => {
 
 export const ScanProvider = ({ children }) => {
   const { token } = useContext(AuthContext);
-  const { emit, scanProgress } = useSocket();
+  const { emit, scanProgress, lastFindings } = useSocket();
 
   // Scan Results State
   const [scanResults, setScanResults] = useState([]);
@@ -31,6 +31,7 @@ export const ScanProvider = ({ children }) => {
   const [scanningAll, setScanningAll] = useState(false);
   const [selectedTargetForScan, setSelectedTargetForScan] = useState(null);
   const [selectedScanType, setSelectedScanType] = useState('quick');
+  const [selectedEngine, setSelectedEngine] = useState('nmap');
   
   // Notifications/Alerts
   const [notifications, setNotifications] = useState([]);
@@ -112,8 +113,19 @@ export const ScanProvider = ({ children }) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
   }, []);
 
+  // Surface backend-pushed high-priority findings as a toast (Workstream D).
+  useEffect(() => {
+    if (lastFindings && lastFindings.count) {
+      const kev = (lastFindings.findings || []).some(f => f.knownExploited);
+      addNotification('warning',
+        `${lastFindings.count} new high-priority finding(s)${kev ? ' incl. known-exploited (KEV)' : ''} detected`,
+        9000);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastFindings]);
+
   // Start Single Target Scan
-  const startScan = useCallback(async (target, scanType = 'quick') => {
+  const startScan = useCallback(async (target, scanType = 'quick', engine = 'nmap') => {
     const _id = target._id;
     const name = target.name;
     const targetType = target.targetType || (target.type === 'Network Device' ? 'device' : 'asset');
@@ -132,9 +144,10 @@ export const ScanProvider = ({ children }) => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ 
-          [bodyKey]: _id, 
-          scanType 
+        body: JSON.stringify({
+          [bodyKey]: _id,
+          scanType,
+          engine
         }),
       });
 
@@ -346,10 +359,10 @@ export const ScanProvider = ({ children }) => {
   // Execute scan from options modal
   const executeScanFromModal = useCallback(() => {
     if (selectedTargetForScan) {
-      startScan(selectedTargetForScan, selectedScanType);
+      startScan(selectedTargetForScan, selectedScanType, selectedEngine);
       setShowScanOptionsModal(false);
     }
-  }, [selectedTargetForScan, selectedScanType, startScan]);
+  }, [selectedTargetForScan, selectedScanType, selectedEngine, startScan]);
 
   // Close modals
   const closeScanResultModal = useCallback(() => {
@@ -383,11 +396,13 @@ export const ScanProvider = ({ children }) => {
     scanningAll,
     selectedTargetForScan,
     selectedScanType,
+    selectedEngine,
     notifications,
     scanHistory,
-    
+
     // Setters
     setSelectedScanType,
+    setSelectedEngine,
     
     // Actions
     startScan,

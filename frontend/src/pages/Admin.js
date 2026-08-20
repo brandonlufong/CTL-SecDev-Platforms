@@ -36,9 +36,12 @@ import {
 } from 'react-icons/fa';
 import axios from 'axios';
 import config from '../config';
+import BsPagination from '../components/BsPagination';
+import { useT } from '../context/LanguageContext';
 import '../App.css'; // Import custom styles
 
 const Admin = () => {
+  const t = useT();
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -55,6 +58,8 @@ const Admin = () => {
   const [statusFilter, setStatusFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const [perPage, setPerPage] = useState(25);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -82,14 +87,14 @@ const Admin = () => {
     fetchUsers();
     fetchStats();
     fetchRolesAndPermissions();
-  }, [search, roleFilter, statusFilter, currentPage]);
+  }, [search, roleFilter, statusFilter, currentPage, perPage]);
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams({
         page: currentPage,
-        limit: 10,
+        limit: perPage,
         search,
         role: roleFilter,
         isActive: statusFilter
@@ -101,6 +106,7 @@ const Admin = () => {
 
       setUsers(response.data.users);
       setTotalPages(response.data.pagination.totalPages);
+      setTotalUsers(response.data.pagination.totalItems);
     } catch (error) {
       setError('Failed to fetch users');
       console.error('Fetch users error:', error);
@@ -276,9 +282,9 @@ const Admin = () => {
       {/* Header */}
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h3 className="mb-2" style={{ color: '#1594EA' }}>
-            <FaUserShield className="me-2" />
-            Admin Dashboard
+          <h3 className="mb-2 vm-page-title">
+            <FaUserShield />
+            {t('Admin Dashboard')}
           </h3>
           <p className="text-muted mb-0">Manage users, roles, and system permissions</p>
         </div>
@@ -489,6 +495,14 @@ const Admin = () => {
               </tbody>
             </Table>
           )}
+          <BsPagination
+            currentPage={currentPage}
+            totalItems={totalUsers}
+            itemsPerPage={perPage}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(s) => { setPerPage(s); setCurrentPage(1); }}
+            label="users"
+          />
 
           {users.length === 0 && !loading && (
             <div className="text-center py-4">

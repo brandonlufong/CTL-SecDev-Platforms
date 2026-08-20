@@ -106,8 +106,9 @@ io.on('connection', (socket) => {
 
 // Middleware
 app.use(cors(config.cors));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// 50mb accommodates uploaded scan files (Nessus/OpenVAS XML, base64 PDFs) and backup restores.
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Make io accessible to routes (if needed)
 app.set('io', io);
@@ -135,6 +136,13 @@ const adminRoutes = require('./routes/adminRoutes');
 const accessRoutes = require('./routes/accessRoutes');
 const logsRoutes = require('./routes/logsRoutes');
 const assetDiscoveryRoutes = require('./routes/discovery');
+const schedulerRoutes = require('./routes/schedulerRoutes');
+const securityRoutes = require('./routes/securityRoutes');
+const analyticsRoutes = require('./routes/analyticsRoutes');
+const systemRoutes = require('./routes/systemRoutes');
+const monitoringRoutes = require('./routes/monitoringRoutes');
+const importRoutes = require('./routes/importRoutes');
+const scanScheduler = require('./services/scanScheduler');
 
 // Mount routes
 app.use('/api/config', configRoutes); // Config route MUST be first and public
@@ -149,6 +157,12 @@ app.use('/api/devices', deviceRoutes);
 app.use('/api/vulnerabilities', vulnerabilityRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/discovery', assetDiscoveryRoutes);
+app.use('/api/schedules', schedulerRoutes);
+app.use('/api/security', securityRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/system', systemRoutes);
+app.use('/api/monitoring', monitoringRoutes);
+app.use('/api/import', importRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -195,6 +209,16 @@ server.listen(PORT, () => {
   console.log('🔍 Starting Asset Monitoring Service...');
   assetMonitoringService.start(5); // Check every 5 minutes
   console.log('✅ Asset Monitoring Service started');
+
+  // Start recurring-scan scheduler (Workstream D)
+  console.log('🕒 Starting Scan Scheduler...');
+  scanScheduler.start(60);
+  console.log('✅ Scan Scheduler started');
+
+  // Start background CVE enrichment sweep (Workstream B)
+  console.log('🧠 Starting CVE Enrichment sweep...');
+  require('./services/enrichmentQueue').startPeriodicSweep(720);
+  console.log('✅ CVE Enrichment sweep started');
 });
 
 // Graceful shutdown

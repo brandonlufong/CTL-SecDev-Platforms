@@ -1,0 +1,201 @@
+/*
+ * Global design harmonization (imported once, after Bootstrap, in index.js).
+ *
+ * The app mixes pages built on react-bootstrap (Servers, Devices, AssetInventory,
+ * Admin, …) with pages built on the new `vm-` design system (Analytics,
+ * Dashboard, Vulnerabilities, …). Rather than rewrite every page, this sheet
+ * restyles the Bootstrap primitives (tables, cards, badges, buttons, pagination,
+ * form controls, modals) to match the vm- look and the CAMTEL palette (#1594EA),
+ * in both light and dark mode. Result: one uniform design across all pages.
+ */
+
+@import './theme.css';   /* tokens (:root + body.bg-dark) + vm- classes, app-wide */
+
+/* ---- Tables: make every Bootstrap table look like .vm-table ---- */
+.table {
+  --bs-table-bg: transparent;
+  --bs-table-color: var(--vm-text);
+  --bs-table-border-color: var(--vm-border);
+  --bs-table-hover-bg: var(--vm-surface-2);
+  --bs-table-hover-color: var(--vm-text);
+  --bs-table-striped-bg: var(--vm-surface-2);
+  --bs-table-striped-color: var(--vm-text);
+  color: var(--vm-text);
+  font-size: 14px;
+  vertical-align: middle;
+}
+.table > thead > tr > th {
+  font-weight: 600;
+  color: var(--vm-text);
+  background: transparent;
+  border-bottom: 1px solid var(--vm-border);
+  padding: 0.5rem 0.5rem;
+}
+.table > tbody > tr > td {
+  border-bottom: 1px solid var(--vm-border);
+  padding: 0.5rem 0.5rem;
+  vertical-align: middle;
+}
+
+/* ---- Cards: surface + border + soft shadow like .vm-card ---- */
+.card {
+  background: var(--vm-surface);
+  border: 1px solid var(--vm-border);
+  border-radius: var(--vm-radius);
+  box-shadow: var(--vm-shadow), var(--vm-bezel);
+  color: var(--vm-text);
+  transition: box-shadow .4s var(--vm-ease), border-color .4s var(--vm-ease);
+}
+.card:hover { box-shadow: var(--vm-shadow-lg), var(--vm-bezel); }
+
+/* ---- Unified buttons (same radius/weight/motion everywhere) ---- */
+.btn {
+  border-radius: 8px;
+  font-weight: 500;
+  padding: 0.45rem 0.9rem;
+  transition: transform .25s var(--vm-ease), box-shadow .25s var(--vm-ease),
+    background-color .25s var(--vm-ease), border-color .25s var(--vm-ease), color .25s var(--vm-ease);
+}
+.btn-sm { border-radius: 7px; padding: 0.3rem 0.65rem; font-size: 0.82rem; }
+.btn-lg { border-radius: 10px; }
+.btn:hover { transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+.btn-group > .btn { border-radius: 8px; }
+.btn-group > .btn:not(:last-child) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.btn-group > .btn:not(:first-child) { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; }
+
+/* vm- action buttons render like real buttons (rounded-rect), while span
+   badges stay pills — so buttons are uniform with Bootstrap buttons. */
+button.vm-badge {
+  border-radius: 8px;
+  padding: 0.45rem 0.8rem;
+  font-weight: 500;
+  font-size: 0.85rem;
+  gap: 6px;
+  transition: transform .25s var(--vm-ease), box-shadow .25s var(--vm-ease),
+    background-color .25s var(--vm-ease), border-color .25s var(--vm-ease), color .25s var(--vm-ease);
+}
+button.vm-badge:hover { transform: translateY(-1px); }
+button.vm-badge:active { transform: translateY(0); }
+span.vm-badge { transition: transform .2s var(--vm-ease); }
+.card-header {
+  background: var(--vm-surface);
+  border-bottom: 1px solid var(--vm-border);
+  color: var(--vm-text);
+}
+.card-header.bg-white, .card .bg-white { background: var(--vm-surface) !important; }
+
+/* ---- Primary buttons -> brand blue ---- */
+.btn-primary {
+  --bs-btn-bg: var(--vm-primary);
+  --bs-btn-border-color: var(--vm-primary);
+  --bs-btn-hover-bg: var(--vm-primary-dark);
+  --bs-btn-hover-border-color: var(--vm-primary-dark);
+  --bs-btn-active-bg: var(--vm-primary-dark);
+  --bs-btn-active-border-color: var(--vm-primary-dark);
+  --bs-btn-disabled-bg: var(--vm-primary);
+  --bs-btn-disabled-border-color: var(--vm-primary);
+}
+.btn-outline-primary {
+  --bs-btn-color: var(--vm-primary);
+  --bs-btn-border-color: var(--vm-primary);
+  --bs-btn-hover-bg: var(--vm-primary);
+  --bs-btn-hover-border-color: var(--vm-primary);
+  --bs-btn-active-bg: var(--vm-primary);
+}
+
+/* ---- Pagination -> brand ---- */
+.pagination {
+  --bs-pagination-color: var(--vm-text);
+  --bs-pagination-bg: var(--vm-surface);
+  --bs-pagination-border-color: var(--vm-border);
+  --bs-pagination-hover-color: var(--vm-primary);
+  --bs-pagination-hover-bg: var(--vm-surface-2);
+  --bs-pagination-hover-border-color: var(--vm-border);
+  --bs-pagination-focus-color: var(--vm-primary);
+  --bs-pagination-active-bg: var(--vm-primary);
+  --bs-pagination-active-border-color: var(--vm-primary);
+  --bs-pagination-disabled-bg: var(--vm-surface);
+  --bs-pagination-disabled-border-color: var(--vm-border);
+}
+
+/* ---- Badges: unify the "primary" tone; keep semantic colors ---- */
+.badge.bg-primary, .badge.text-bg-primary { background-color: var(--vm-primary) !important; }
+
+/* ---- Unified form controls (identical filled style everywhere) ---- */
+.form-control, .form-select {
+  background-color: var(--vm-surface-2);
+  color: var(--vm-text);
+  border: 1px solid var(--vm-border);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  transition: border-color .2s var(--vm-ease), box-shadow .2s var(--vm-ease), background-color .2s var(--vm-ease);
+}
+.form-control-sm, .form-select-sm { border-radius: 7px; padding: 0.3rem 0.55rem; }
+.form-control:focus, .form-select:focus {
+  background-color: var(--vm-surface);
+  color: var(--vm-text);
+  border-color: var(--vm-primary);
+  box-shadow: 0 0 0 3px rgba(21, 148, 234, .15);
+}
+.form-control::placeholder { color: var(--vm-text-muted); }
+.input-group-text { background: var(--vm-surface-2); border-color: var(--vm-border); color: var(--vm-text-muted); border-radius: 8px; }
+.form-check-input:checked { background-color: var(--vm-primary); border-color: var(--vm-primary); }
+.form-check-input:focus { border-color: var(--vm-primary); box-shadow: 0 0 0 3px rgba(21, 148, 234, .15); }
+
+/* ---- Modals / dropdowns / offcanvas (mainly for dark mode parity) ---- */
+.modal-content, .dropdown-menu, .offcanvas, .list-group-item {
+  background: var(--vm-surface);
+  color: var(--vm-text);
+  border-color: var(--vm-border);
+}
+.modal-header, .modal-footer { border-color: var(--vm-border); }
+.dropdown-item { color: var(--vm-text); }
+.dropdown-item:hover, .dropdown-item:focus { background: var(--vm-surface-2); color: var(--vm-text); }
+
+/* ---- Headings inherit theme text (inline colors on pages still win) ---- */
+h1, h2, h3, h4, h5, h6 { color: var(--vm-text); }
+
+/* ---- Uniform BODY text across the whole platform ---- */
+body, .vm-page, .container, .container-fluid { color: var(--vm-text); }
+p, li, dd, dt, td, th, label, .form-label, .card-body, .card-text,
+.list-group-item, .form-control, .form-select, .dropdown-item {
+  font-size: 0.95rem;
+}
+small, .small, .text-muted small { font-size: 0.82rem; }
+.text-muted { color: var(--vm-text-muted) !important; }
+.card-title { font-weight: 600; color: var(--vm-text); }
+/* Section headings inside cards stay neutral (page title is the only blue one) */
+.card h4, .card h5, .card h6 { color: var(--vm-text); font-weight: 600; }
+
+/* ---- Dark-mode fixes for Bootstrap utility classes used across pages ---- */
+body.bg-dark { background: var(--vm-bg) !important; }
+body.bg-dark .bg-white { background-color: var(--vm-surface) !important; }
+body.bg-dark .bg-light { background-color: var(--vm-surface-2) !important; }
+body.bg-dark .text-dark { color: var(--vm-text) !important; }
+body.bg-dark .text-muted { color: var(--vm-text-muted) !important; }
+body.bg-dark .table { color: var(--vm-text); }
+body.bg-dark .border { border-color: var(--vm-border) !important; }
+
+/* Invert hardcoded inline colors in dark mode WITHOUT editing every file. Each
+   rule only touches the property that hex is (almost) always used for, so it
+   can't corrupt an unrelated use (e.g. white text on a brand tile). */
+/* Page-shell / panel backgrounds */
+body.bg-dark [style*="F1F8FD"], body.bg-dark [style*="f1f8fd"],
+body.bg-dark [style*="F9FAFB"], body.bg-dark [style*="f9fafb"],
+body.bg-dark [style*="#F3F4F6"], body.bg-dark [style*="#f3f4f6"] { background-color: var(--vm-bg) !important; }
+/* Dark body text -> light */
+body.bg-dark [style*="#1F2937"], body.bg-dark [style*="#374151"],
+body.bg-dark [style*="#111827"] { color: var(--vm-text) !important; }
+/* Muted grey text -> themed muted */
+body.bg-dark [style*="#6B7280"], body.bg-dark [style*="#6b7280"],
+body.bg-dark [style*="#9CA3AF"], body.bg-dark [style*="#4B5563"] { color: var(--vm-text-muted) !important; }
+/* Hairline borders -> themed border */
+body.bg-dark [style*="#E5E7EB"], body.bg-dark [style*="#e5e7eb"],
+body.bg-dark [style*="#D1D5DB"] { border-color: var(--vm-border) !important; }
+/* Modal/table/list backgrounds + inputs stay on theme */
+body.bg-dark .modal-content, body.bg-dark .list-group-item,
+body.bg-dark .form-control, body.bg-dark .form-select { background-color: var(--vm-surface-2); color: var(--vm-text); }
+body.bg-dark .nav-tabs .nav-link { color: var(--vm-text-muted); }
+body.bg-dark .nav-tabs .nav-link.active { color: var(--vm-primary); background: var(--vm-surface); border-color: var(--vm-border) var(--vm-border) var(--vm-surface); }
+body.bg-dark .alert { background-color: var(--vm-surface-2); color: var(--vm-text); border-color: var(--vm-border); }

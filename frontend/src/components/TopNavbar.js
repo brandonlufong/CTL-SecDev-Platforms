@@ -6,17 +6,23 @@ import {
   Nav,
   Button
 } from 'react-bootstrap';
-import { 
+import {
   FaUser,
   FaCog,
   FaUserShield,
   FaSignOutAlt,
-  FaQuestionCircle
+  FaQuestionCircle,
+  FaMoon,
+  FaSun
 } from 'react-icons/fa';
 import { AuthContext } from '../context/AuthContext';
+import { ThemeContext } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 
 const TopNavbar = () => {
   const { user, logout } = React.useContext(AuthContext);
+  const { darkMode, toggleTheme } = React.useContext(ThemeContext);
+  const { lang, setLang, languages } = useLanguage();
   const navigate = useNavigate();
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const dropdownRef = useRef(null);
@@ -96,7 +102,35 @@ const TopNavbar = () => {
         </Navbar.Brand>
 
         {/* Right side - Profile */}
-        <Nav className="ms-auto align-items-center">
+        <Nav className="ms-auto align-items-center" style={{ gap: 10 }}>
+          {/* Language switcher */}
+          <Button
+            variant="light"
+            onClick={() => { const codes = languages.map(l => l.code); setLang(codes[(codes.indexOf(lang) + 1) % codes.length]); }}
+            title="Language"
+            style={{
+              backgroundColor: 'var(--vm-surface-2)', border: '1px solid var(--vm-border)',
+              borderRadius: '8px', height: 40, padding: '0 12px', display: 'flex',
+              alignItems: 'center', color: 'var(--vm-text)', fontWeight: 600, fontSize: 13,
+            }}
+          >
+            {(languages.find(l => l.code === lang) || languages[0]).short}
+          </Button>
+
+          {/* Theme toggle */}
+          <Button
+            variant="light"
+            onClick={toggleTheme}
+            title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+            style={{
+              backgroundColor: 'var(--vm-surface-2)', border: '1px solid var(--vm-border)',
+              borderRadius: '8px', width: 40, height: 40, display: 'flex',
+              alignItems: 'center', justifyContent: 'center', color: 'var(--vm-text-muted)',
+            }}
+          >
+            {darkMode ? <FaSun /> : <FaMoon />}
+          </Button>
+
           {/* Profile Dropdown */}
           <div ref={dropdownRef} style={{ position: 'relative' }}>
             <Button
@@ -134,15 +168,15 @@ const TopNavbar = () => {
             {/* Dropdown Menu */}
             {showProfileDropdown && (
               <div
+                className="profile-dropdown"
                 style={{
                   position: 'absolute',
                   top: '100%',
                   right: 0,
-                  backgroundColor: '#FFFFFF',
-                  border: '1px solid #E5E7EB',
-                  borderRadius: '8px',
-                  boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)',
-                  minWidth: '200px',
+                  backgroundColor: 'var(--vm-surface)',
+                  border: '1px solid var(--vm-border)',
+                  borderRadius: '14px',
+                  minWidth: '220px',
                   marginTop: '8px',
                   zIndex: 1000,
                   overflow: 'hidden'

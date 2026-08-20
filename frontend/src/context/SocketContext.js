@@ -17,6 +17,7 @@ export const SocketProvider = ({ children }) => {
   const { token } = useContext(AuthContext);
   const socketRef = useRef(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [lastFindings, setLastFindings] = useState(null); // new high-priority findings pushed by the backend
   const [scanProgress, setScanProgress] = useState({
     active: false,
     percent: 0,
@@ -110,6 +111,12 @@ export const SocketProvider = ({ children }) => {
       });
     });
 
+    // New high-priority findings (Critical/High/KEV) pushed after a scan
+    socket.on('newFindings', (data) => {
+      console.log('🚨 New findings:', data);
+      setLastFindings({ ...data, _ts: Date.now() });
+    });
+
     // Cleanup
     return () => {
       if (socket) {
@@ -120,6 +127,7 @@ export const SocketProvider = ({ children }) => {
         socket.off('scanProgress');
         socket.off('scanCompleted');
         socket.off('scanError');
+        socket.off('newFindings');
         socket.disconnect();
       }
     };
@@ -159,6 +167,7 @@ export const SocketProvider = ({ children }) => {
       value={{
         isConnected,
         scanProgress,
+        lastFindings,
         emit,
         requestScanStatus,
         resetScanProgress,

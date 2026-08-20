@@ -12,6 +12,7 @@ import {
   FaDatabase,
   FaLock,
   FaHistory,
+  FaHeartbeat,
     FaExclamationTriangle,
   FaCheckCircle,
   FaClock,
@@ -49,6 +50,14 @@ export const navigationConfig = [
         icon: FaShieldVirus,
         description: 'Vulnerability assessment and management',
         roles: ['user', 'security_analyst', 'auditor', 'admin', 'super_admin'],
+        badge: null
+      },
+      {
+        name: 'Scan Scheduler',
+        path: '/scan-scheduler',
+        icon: FaClock,
+        description: 'Recurring automated scans',
+        roles: ['security_analyst', 'admin', 'super_admin'],
         badge: null
       },
     ]
@@ -115,6 +124,14 @@ export const navigationConfig = [
         icon: FaHistory,
         description: 'Audit logs and monitoring',
         roles: ['auditor', 'admin', 'super_admin'],
+        badge: null
+      },
+      {
+        name: 'System Health',
+        path: '/system-health',
+        icon: FaHeartbeat,
+        description: 'Live scanner, database & scheduler status',
+        roles: ['admin', 'super_admin'],
         badge: null
       }
     ]

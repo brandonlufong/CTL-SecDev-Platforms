@@ -39,6 +39,38 @@ exports.getAssets = async (req, res) => {
   }
 };
 
+// Get a single asset with its open-finding rollup (for the detail page)
+exports.getAssetById = async (req, res) => {
+  try {
+    const asset = await Asset.findById(req.params.id);
+    if (!asset) return res.status(404).json({ message: 'Asset not found' });
+
+    const Vulnerability = require('../models/Vulnerability');
+    const sla = require('../utils/sla');
+    const openFilter = { asset: asset._id, status: { $nin: Array.from(sla.CLOSED_STATUSES) } };
+    const [findings, severityAgg] = await Promise.all([
+      Vulnerability.countDocuments(openFilter),
+      Vulnerability.aggregate([
+        { $match: openFilter },
+        { $group: { _id: '$severity', count: { $sum: 1 }, maxRisk: { $max: { $ifNull: ['$riskScore', 0] } } } },
+      ]),
+    ]);
+    const sev = Object.fromEntries(severityAgg.map(s => [s._id, s.count]));
+    const maxRisk = severityAgg.reduce((m, s) => Math.max(m, s.maxRisk || 0), 0);
+
+    res.json({
+      asset,
+      summary: {
+        openFindings: findings,
+        severity: { Critical: sev.Critical || 0, High: sev.High || 0, Medium: sev.Medium || 0, Low: sev.Low || 0 },
+        maxRisk,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to load asset', error: err.message });
+  }
+};
+
 // Create new asset
 exports.createAsset = async (req, res) => {
   try {
@@ -249,5 +281,172 @@ exports.pingAssets = async (req, res) => {
   } catch (err) {
     console.error('Ping all assets failed:', err);
     res.status(500).json({ message: 'Failed to ping assets.' });
+  }
+};
+
+// ===========================================================================
+// Workstream C — import/export, bulk ops, dedupe, subnet discovery
+// ===========================================================================
+
+const { discoverHosts } = require('../services/scannerService');
+
+// Columns used for CSV import/export (kept simple and dependency-free).
+const CSV_COLUMNS = [
+  'name', 'ip', 'type', 'criticality', 'environment', 'tags', 'businessOwner',
+  'status', 'exposure', 'os', 'owner', 'hostDepartment', 'serverAdministrator', 'description'
+];
+
+function toCsvValue(v) {
+  if (v == null) return '';
+  const s = Array.isArray(v) ? v.join('|') : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function parseCsv(text) {
+  // Minimal RFC-4180-ish parser (handles quoted fields + embedded commas/quotes).
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false; }
+      else field += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+    else if (c === '\r') { /* skip */ }
+    else field += c;
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(c => c.trim() !== ''));
+}
+
+// GET /api/assets/export  -> text/csv download
+exports.exportAssetsCsv = async (req, res) => {
+  try {
+    const assets = await Asset.find().sort({ name: 1 });
+    const header = CSV_COLUMNS.join(',');
+    const lines = assets.map(a => CSV_COLUMNS.map(col => toCsvValue(a[col])).join(','));
+    const csv = [header, ...lines].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="assets.csv"');
+    res.send(csv);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to export assets.', error: err.message });
+  }
+};
+
+// POST /api/assets/import  { csv: "<raw csv text>" }  -> upsert by IP
+exports.importAssetsCsv = async (req, res) => {
+  try {
+    const csv = req.body.csv || '';
+    const rows = parseCsv(csv);
+    if (rows.length < 2) return res.status(400).json({ message: 'CSV has no data rows.' });
+
+    const header = rows[0].map(h => h.trim());
+    const results = { created: 0, updated: 0, skipped: 0, errors: [] };
+
+    for (let i = 1; i < rows.length; i++) {
+      const rec = {};
+      header.forEach((h, idx) => { rec[h] = (rows[i][idx] || '').trim(); });
+      if (!rec.ip || !rec.name) { results.skipped++; continue; }
+      if (rec.tags) rec.tags = rec.tags.split('|').map(t => t.trim()).filter(Boolean);
+      try {
+        const existing = await Asset.findOne({ ip: rec.ip });
+        if (existing) {
+          Object.assign(existing, rec);
+          await existing.save();
+          results.updated++;
+        } else {
+          await Asset.create(rec);
+          results.created++;
+        }
+      } catch (e) {
+        results.errors.push({ ip: rec.ip, error: e.message });
+      }
+    }
+    res.json({ message: 'Import complete', ...results });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to import assets.', error: err.message });
+  }
+};
+
+// PATCH /api/assets/bulk  { ids: [...], update: { criticality, environment, tags, status, ... } }
+exports.bulkUpdateAssets = async (req, res) => {
+  try {
+    const { ids, update } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: 'ids array is required' });
+    }
+    const allowed = ['criticality', 'environment', 'tags', 'status', 'exposure', 'businessOwner', 'owner', 'hostDepartment'];
+    const set = {};
+    Object.keys(update || {}).forEach(k => { if (allowed.includes(k)) set[k] = update[k]; });
+    if (Object.keys(set).length === 0) {
+      return res.status(400).json({ message: 'No updatable fields provided', allowed });
+    }
+    const result = await Asset.updateMany({ _id: { $in: ids } }, { $set: set });
+    res.json({ message: 'Bulk update complete', matched: result.matchedCount, modified: result.modifiedCount });
+  } catch (err) {
+    res.status(500).json({ message: 'Bulk update failed', error: err.message });
+  }
+};
+
+// GET /api/assets/duplicates  -> assets sharing an IP
+exports.findDuplicateAssets = async (req, res) => {
+  try {
+    const dups = await Asset.aggregate([
+      { $group: { _id: '$ip', count: { $sum: 1 }, ids: { $push: '$_id' }, names: { $push: '$name' } } },
+      { $match: { count: { $gt: 1 } } },
+      { $sort: { count: -1 } }
+    ]);
+    res.json({ duplicateGroups: dups.length, groups: dups });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to find duplicates', error: err.message });
+  }
+};
+
+// POST /api/assets/discover  { target: "10.0.0.0/24" } -> live hosts (not yet saved)
+exports.discoverSubnet = async (req, res) => {
+  try {
+    const { target } = req.body;
+    if (!target) return res.status(400).json({ message: 'target (IP/CIDR/range) is required' });
+    const hosts = await discoverHosts(target);
+    // Flag which live hosts are already known assets.
+    const known = await Asset.find({ ip: { $in: hosts.map(h => h.ip) } }, 'ip');
+    const knownIps = new Set(known.map(a => a.ip));
+    const enriched = hosts.map(h => ({ ...h, existingAsset: knownIps.has(h.ip) }));
+    res.json({ target, total: enriched.length, newHosts: enriched.filter(h => !h.existingAsset).length, hosts: enriched });
+  } catch (err) {
+    res.status(500).json({ message: 'Host discovery failed', error: err.message });
+  }
+};
+
+// POST /api/assets/promote  { hosts: [{ip, hostname, mac, vendor}], defaults: {criticality, environment, type} }
+exports.promoteHosts = async (req, res) => {
+  try {
+    const { hosts, defaults = {} } = req.body;
+    if (!Array.isArray(hosts) || hosts.length === 0) {
+      return res.status(400).json({ message: 'hosts array is required' });
+    }
+    const created = [];
+    for (const h of hosts) {
+      if (!h.ip) continue;
+      const exists = await Asset.findOne({ ip: h.ip });
+      if (exists) continue;
+      const asset = await Asset.create({
+        name: h.hostname || h.ip,
+        ip: h.ip,
+        type: defaults.type || 'Server',
+        criticality: defaults.criticality || 'Medium',
+        environment: defaults.environment || 'Production',
+        status: 'Online',
+        description: h.vendor ? `Discovered host (${h.vendor})` : 'Discovered host',
+      });
+      geoEnrichmentMiddleware.enrichAsset(asset).catch(() => {});
+      created.push(asset);
+    }
+    res.json({ message: `Promoted ${created.length} host(s) to assets`, created });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to promote hosts', error: err.message });
   }
 };

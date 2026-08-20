@@ -5,6 +5,7 @@ import { AuthContext } from '../context/AuthContext';
 import { io } from 'socket.io-client';
 import config from '../config';
 import NetworkDetector from './NetworkDetector';
+import BsPagination from './BsPagination';
 
 const AssetDiscovery = ({ show, onHide }) => {
   const { token, user } = useContext(AuthContext);
@@ -38,6 +39,8 @@ const AssetDiscovery = ({ show, onHide }) => {
   const [discoveredAssets, setDiscoveredAssets] = useState([]);
   const [scanResults, setScanResults] = useState(null);
   const [error, setError] = useState('');
+  const [discPage, setDiscPage] = useState(1);
+  const [discPerPage, setDiscPerPage] = useState(10);
   const [socket, setSocket] = useState(null);
 
   // Initialize Socket.IO connection
@@ -431,7 +434,7 @@ const AssetDiscovery = ({ show, onHide }) => {
                   return (
                     <>
                       <ListGroup>
-                        {discoveredAssets.map((asset, index) => {
+                        {discoveredAssets.slice((discPage - 1) * discPerPage, discPage * discPerPage).map((asset, index) => {
                           // Safely extract asset properties
                           const hostname = asset?.hostname || asset?.ip || 'Unknown';
                           const ip = asset?.ip || 'Unknown IP';
@@ -462,6 +465,15 @@ const AssetDiscovery = ({ show, onHide }) => {
                           );
                         })}
                       </ListGroup>
+
+                      <BsPagination
+                        currentPage={discPage}
+                        totalItems={discoveredAssets.length}
+                        itemsPerPage={discPerPage}
+                        onPageChange={setDiscPage}
+                        onPageSizeChange={(s) => { setDiscPerPage(s); setDiscPage(1); }}
+                        label="hosts"
+                      />
 
                       {scanResults && (
                         <div className="mt-3 p-3 bg-light rounded">

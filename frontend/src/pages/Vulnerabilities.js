@@ -1,1003 +1,573 @@
-import React, { useState, useEffect, useContext } from 'react';
-import { Modal, Button, Table, Form, Badge, Dropdown, Pagination, Card, Spinner, ButtonGroup } from 'react-bootstrap';
-import { AuthContext } from '../context/AuthContext';
-import { FaPlus, FaEdit, FaTrash, FaSearch, FaSort, FaDownload, FaSyncAlt, FaBug, FaChevronLeft, FaChevronRight, FaAngleDoubleLeft, FaAngleDoubleRight } from 'react-icons/fa';
-import config from '../config';
-import '../App.css'; // Import custom styles
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Modal, Button, Form, Tabs, Tab } from 'react-bootstrap';
 import { useLocation } from 'react-router-dom';
-import Papa from 'papaparse'; // For CSV Export
+import {
+  FaPlus, FaEdit, FaTrash, FaSyncAlt, FaBug, FaFireAlt, FaClock, FaFileCsv,
+  FaExclamationTriangle, FaExternalLinkAlt, FaInfoCircle, FaShieldAlt, FaHistory, FaFileImport,
+} from 'react-icons/fa';
+import {
+  getVulnerabilities, createVulnerability, updateVulnerability, deleteVulnerability,
+  getAssets, getDevices, getUsers, setVulnStatus, assignVuln, addVulnNote, bulkVulnAction,
+  exportVulnerabilitiesCsv, importScan,
+} from '../api/platformApi';
+import BsPagination from '../components/BsPagination';
+import { useT } from '../context/LanguageContext';
+import '../styles/theme.css';
 
-function useQuery() {
-  return new URLSearchParams(useLocation().search);
-}
+// Full lifecycle from the Vulnerability model.
+const STATUSES = ['Open', 'In Progress', 'Acknowledged', 'Under Review', 'Mitigated',
+  'Remediated', 'Resolved', 'Closed', 'False Positive', 'Wont Fix', 'Duplicate', 'Not Applicable'];
+const SEVERITIES = ['Critical', 'High', 'Medium', 'Low'];
+const OPEN_STATUSES = new Set(['Open', 'In Progress', 'Acknowledged', 'Under Review', 'Pending',
+  'Reviewed', 'Escalated', 'Deferred']);
 
-const ALL_VULN_STATUSES = [
-  'Open', 'In Progress', 'Resolved'
-];
+const sevClass = (s) => ({ Critical: 'critical', High: 'high', Medium: 'medium', Low: 'low' }[s] || 'info');
+const riskColor = (v) => (v >= 9 ? '#b42318' : v >= 7 ? '#d92d20' : v >= 4 ? '#b54708' : '#475467');
+const isBreached = (v) => OPEN_STATUSES.has(v.status) && v.dueDate && new Date(v.dueDate) < new Date();
 
-const statusToVariant = (status) => {
-  if (status === 'Resolved' || status === 'Remediated' || status === 'Closed' || status === 'Mitigated') return 'success';
-  if (status === 'In Progress' || status === 'Pending' || status === 'Under Review' || status === 'Acknowledged' || status === 'Reviewed' || status === 'Escalated' || status === 'Deferred') return 'warning';
-  if (status === 'False Positive' || status === 'Not Applicable' || status === 'Duplicate' || status === 'Wont Fix') return 'secondary';
-  return 'danger'; // Open and others default to danger
+const emptyForm = {
+  title: '', severity: 'Medium', cvssScore: '', status: 'Open', asset: '', device: '',
+  description: '', cve: '', discoveredDate: '', remediation: '', exploitAvailable: false, references: '',
 };
 
-const Vulnerabilities = () => {
-  const query = useQuery();
-  const filterSeverity = query.get("severity");
-
-  const { token } = useContext(AuthContext);
-  const [showModal, setShowModal] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editId, setEditId] = useState(null);
-
+export default function Vulnerabilities() {
+  const location = useLocation();
+  const t = useT();
   const [vulns, setVulns] = useState([]);
   const [assets, setAssets] = useState([]);
   const [devices, setDevices] = useState([]);
-
-  const [form, setForm] = useState({
-    title: '',
-    severity: 'Low',
-    cvssScore: '',
-    status: 'Open',
-    asset: '',
-    device: '',
-    description: '',
-    cve: '',
-    discoveredDate: '',
-    remediation: '',
-    exploitAvailable: false,
-    references: '',
-  });
-
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filteredVulns, setFilteredVulns] = useState([]);
-  const [severityFilter, setSeverityFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [dateFilter, setDateFilter] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const location = useLocation();
+  // Filters
+  const [search, setSearch] = useState('');
+  const [severity, setSeverity] = useState('');
+  const [status, setStatus] = useState('');
+  const [kevOnly, setKevOnly] = useState(false);
+  const [breachedOnly, setBreachedOnly] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
-  // Parse query params
-  const queryParams = new URLSearchParams(location.search);
-  const severityParam = queryParams.get("severity");
-  const statusParam = queryParams.get("status");
+  // Saved views (persisted filter presets)
+  const [savedViews, setSavedViews] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('vm_vuln_views') || '[]'); } catch { return []; }
+  });
+  const persistViews = (views) => { setSavedViews(views); localStorage.setItem('vm_vuln_views', JSON.stringify(views)); };
+  const saveCurrentView = () => {
+    const name = window.prompt('Name this view:');
+    if (!name || !name.trim()) return;
+    const view = { name: name.trim(), severity, status, kevOnly, breachedOnly, search };
+    persistViews([...savedViews.filter(v => v.name !== view.name), view]);
+  };
+  const applyView = (name) => {
+    const v = savedViews.find(x => x.name === name);
+    if (!v) return;
+    setSeverity(v.severity || ''); setStatus(v.status || '');
+    setKevOnly(!!v.kevOnly); setBreachedOnly(!!v.breachedOnly); setSearch(v.search || '');
+  };
+  const deleteView = (name) => persistViews(savedViews.filter(v => v.name !== name));
 
-  useEffect(() => {
-    fetchVulnerabilities(severityParam, statusParam);
-  }, [severityParam, statusParam]);
+  // Selection + modal
+  const [selected, setSelected] = useState(new Set());
+  const [showModal, setShowModal] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [form, setForm] = useState(emptyForm);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Fetch all vulnerabilities with proper error handling
-  const fetchVulnerabilities = async (severity, status) => {
+  // Detail pane
+  const [detail, setDetail] = useState(null);
+  const [detailTab, setDetailTab] = useState('overview');
+  const [noteText, setNoteText] = useState('');
+
+  // Import (Nessus / OpenVAS)
+  const [showImport, setShowImport] = useState(false);
+  const [importFormat, setImportFormat] = useState('auto');
+  const [importContent, setImportContent] = useState('');
+  const [importFileName, setImportFileName] = useState('');
+  const [importIsPdf, setImportIsPdf] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+
+  const onImportFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportFileName(file.name); setImportResult(null);
+    const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
+    setImportIsPdf(isPdf);
+    const reader = new FileReader();
+    if (isPdf) {
+      reader.onload = () => setImportContent((String(reader.result || '').split(',')[1]) || ''); // base64 payload after the data: prefix
+      reader.readAsDataURL(file);
+    } else {
+      reader.onload = () => setImportContent(String(reader.result || ''));
+      reader.readAsText(file);
+    }
+  };
+  const runImport = async () => {
+    if (!importContent.trim()) return;
+    setImporting(true); setImportResult(null);
     try {
-      setLoading(true);
-      let url = '/api/vulnerabilities';
-      const params = new URLSearchParams();
-      if (severity) params.append('severity', severity);
-      if (status) params.append('status', status);
+      const payload = importIsPdf
+        ? { contentBase64: importContent, format: 'openvas-pdf' }
+        : { content: importContent, format: importFormat === 'auto' ? undefined : importFormat };
+      const res = await importScan(payload);
+      setImportResult(res);
+      await load();
+    } catch (err) {
+      setImportResult({ error: err?.response?.data?.message || err.message });
+    } finally { setImporting(false); }
+  };
 
-      if (params.toString()) {
-        url += `?${params.toString()}`;
-      }
+  const userName = useCallback((id) => {
+    if (!id) return null;
+    const uid = typeof id === 'object' ? id._id : id;
+    const u = users.find(x => x._id === uid);
+    return u ? u.name : (typeof id === 'object' ? id.name : null);
+  }, [users]);
 
-      const res = await fetch(`${config.API_BASE_URL}${url}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+  // Merge an API update while preserving populated asset/device/assignee refs.
+  const mergeUpdated = (x, updated) => ({
+    ...x, ...updated,
+    asset: x.asset, device: x.device,
+    assignedTo: (updated.assignedTo && typeof updated.assignedTo === 'object') ? updated.assignedTo : x.assignedTo,
+  });
+  const applyUpdate = (id, updated) => {
+    setVulns(prev => prev.map(x => (x._id === id ? mergeUpdated(x, updated) : x)));
+    setDetail(d => (d && d._id === id ? mergeUpdated(d, updated) : d));
+  };
+  const openDetail = (v) => { setDetail(v); setDetailTab('overview'); setNoteText(''); };
 
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-
-      const data = await res.json();
-      setVulns(data);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [v, a, d, u] = await Promise.all([
+        getVulnerabilities(), getAssets(), getDevices(), getUsers(),
+      ]);
+      setVulns(Array.isArray(v) ? v : (v.vulnerabilities || []));
+      setAssets(Array.isArray(a) ? a : []);
+      setDevices(Array.isArray(d) ? d : []);
+      setUsers(Array.isArray(u) ? u : (u.users || []));
       setError('');
     } catch (err) {
-      console.error('Failed to fetch vulnerabilities', err);
-      setError('Failed to load vulnerabilities: ' + err.message);
+      setError(err?.response?.data?.message || err.message || 'Failed to load vulnerabilities');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Fetch all assets
-  const fetchAssets = async () => {
-    try {
-      const res = await fetch(`${config.API_BASE_URL}/api/assets`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setAssets(data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch assets', err);
-    }
-  };
+  useEffect(() => { load(); }, [load]);
 
-  // Fetch all devices
-  const fetchDevices = async () => {
-    try {
-      const res = await fetch(`${config.API_BASE_URL}/api/devices`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setDevices(data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch devices', err);
-    }
-  };
-
+  // Deep-link ?severity= / ?status=
   useEffect(() => {
-    fetchAssets();
-    fetchDevices();
-  }, [token]);
+    const q = new URLSearchParams(location.search);
+    if (q.get('severity')) setSeverity(q.get('severity'));
+    if (q.get('status')) setStatus(q.get('status'));
+  }, [location.search]);
 
-  const handleChange = e => {
-    const { name, value, type, checked } = e.target;
-    setForm(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value,
-    }));
+  const filtered = useMemo(() => {
+    return vulns.filter(v => {
+      if (severity && v.severity !== severity) return false;
+      if (status && v.status !== status) return false;
+      if (kevOnly && !v.knownExploited) return false;
+      if (breachedOnly && !isBreached(v)) return false;
+      if (search) {
+        const t = `${v.title} ${v.cve || ''} ${v.asset?.name || ''} ${v.device?.name || ''} ${v.asset?.ip || ''}`.toLowerCase();
+        if (!t.includes(search.toLowerCase())) return false;
+      }
+      return true;
+    }).sort((a, b) => (b.riskScore || 0) - (a.riskScore || 0));
+  }, [vulns, severity, status, kevOnly, breachedOnly, search]);
+
+  // Reset to first page whenever the filtered set changes.
+  useEffect(() => { setPage(1); }, [search, severity, status, kevOnly, breachedOnly]);
+  const paged = useMemo(() => filtered.slice((page - 1) * pageSize, page * pageSize), [filtered, page, pageSize]);
+
+  const kpis = useMemo(() => ({
+    total: vulns.length,
+    open: vulns.filter(v => OPEN_STATUSES.has(v.status)).length,
+    critical: vulns.filter(v => v.severity === 'Critical').length,
+    kev: vulns.filter(v => v.knownExploited).length,
+    breached: vulns.filter(isBreached).length,
+  }), [vulns]);
+
+  // ---- inline actions ----
+  const changeStatus = async (v, newStatus) => {
+    const updated = await setVulnStatus(v._id, newStatus);
+    applyUpdate(v._id, updated);
+  };
+  const changeAssignee = async (v, userId) => {
+    const updated = await assignVuln(v._id, userId);
+    applyUpdate(v._id, updated);
+  };
+  const submitNote = async () => {
+    if (!detail || !noteText.trim()) return;
+    const updated = await addVulnNote(detail._id, noteText.trim());
+    applyUpdate(detail._id, updated);
+    setNoteText('');
+  };
+  const doBulk = async (payload) => {
+    if (selected.size === 0) return;
+    await bulkVulnAction({ ids: [...selected], ...payload });
+    setSelected(new Set());
+    load();
   };
 
-  const openCreateModal = () => {
+  const toggleSel = (id) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleAll = () => setSelected(prev => (prev.size === filtered.length ? new Set() : new Set(filtered.map(v => v._id))));
+
+  // ---- CRUD modal ----
+  const openCreate = () => { setEditId(null); setForm(emptyForm); setShowModal(true); };
+  const openEdit = (v) => {
+    setEditId(v._id);
     setForm({
-      title: '',
-      severity: 'Low',
-      status: 'Open',
-      cvssScore: '',
-      asset: '',
-      device: '',
-      description: '',
-      cve: '',
-      discoveredDate: '',
-      remediation: '',
-      exploitAvailable: false,
-      references: '',
+      title: v.title || '', severity: v.severity || 'Medium', cvssScore: v.cvssScore ?? '',
+      status: v.status || 'Open', asset: v.asset?._id || v.asset || '', device: v.device?._id || v.device || '',
+      description: v.description || '', cve: v.cve || '',
+      discoveredDate: v.discoveredDate ? v.discoveredDate.slice(0, 10) : '',
+      remediation: v.remediation || '', exploitAvailable: !!v.exploitAvailable,
+      references: Array.isArray(v.references) ? v.references.join(', ') : (v.references || ''),
     });
-    setIsEditing(false);
-    setEditId(null);
     setShowModal(true);
   };
-
-  const openEditModal = vuln => {
-    setForm({
-      title: vuln.title,
-      severity: vuln.severity,
-      cvssScore: vuln.cvssScore || '',
-      status: vuln.status,
-      asset: vuln.asset ? vuln.asset._id : '',
-      device: vuln.device ? vuln.device._id : '',
-      description: vuln.description || '',
-      cve: vuln.cve || '',
-      discoveredDate: vuln.discoveredDate ? vuln.discoveredDate.substring(0, 10) : '',
-      remediation: vuln.remediation || '',
-      exploitAvailable: vuln.exploitAvailable || false,
-      references: vuln.references || '',
-    });
-    setEditId(vuln._id);
-    setIsEditing(true);
-    setShowModal(true);
-  };
-
-  const handleSubmit = async e => {
+  const submit = async (e) => {
     e.preventDefault();
-    
-    if (!form.asset && !form.device) {
-      alert('Please select an asset or a device.');
-      return;
-    }
-
-    if (!form.title.trim()) {
-      alert('Please enter a title.');
-      return;
-    }
-
-    setIsSubmitting(true);
-
+    setSubmitting(true);
     try {
-      const method = isEditing ? 'PUT' : 'POST';
-      const url = isEditing
-        ? `${config.API_BASE_URL}/api/vulnerabilities/${editId}`
-        : `${config.API_BASE_URL}/api/vulnerabilities`;
-
-      // Clean up the form data before sending
-      const submitData = {
+      const payload = {
         ...form,
-        // Convert empty strings to null for optional fields
-        cvssScore: form.cvssScore ? parseFloat(form.cvssScore) : null,
-        discoveredDate: form.discoveredDate || null,
-        description: form.description || null,
-        cve: form.cve || null,
-        remediation: form.remediation || null,
-        references: form.references || null,
-        // Ensure we only send either asset OR device, not both
-        asset: form.asset || null,
-        device: form.device || null,
+        cvssScore: form.cvssScore === '' ? undefined : Number(form.cvssScore),
+        references: form.references ? form.references.split(',').map(s => s.trim()).filter(Boolean) : [],
+        asset: form.asset || undefined, device: form.device || undefined,
       };
-
-      // Remove empty device/asset field if the other is selected
-      if (submitData.asset) {
-        submitData.device = null;
-      } else if (submitData.device) {
-        submitData.asset = null;
-      }
-
-      const res = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(submitData),
-      });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        let errorData = {};
-        try {
-          errorData = JSON.parse(errorText);
-        } catch (parseErr) {
-          console.error('Failed to parse error response as JSON:', parseErr);
-        }
-        
-        throw new Error(errorData.message || errorText || `HTTP error! status: ${res.status}`);
-      }
-
-      const result = await res.json();
-      
-      await fetchVulnerabilities(severityParam, statusParam);
+      if (editId) await updateVulnerability(editId, payload);
+      else await createVulnerability(payload);
       setShowModal(false);
-      setError('');
-      
+      load();
     } catch (err) {
-      console.error('Failed to save vulnerability', err);
-      setError('Failed to save vulnerability: ' + err.message);
-    } finally {
-      setIsSubmitting(false);
-    }
+      alert(err?.response?.data?.message || err.message);
+    } finally { setSubmitting(false); }
   };
+  const remove = async (v) => { if (window.confirm(`Delete "${v.title}"?`)) { await deleteVulnerability(v._id); load(); } };
 
-  const handleDelete = async (id) => {
-    const confirmed = window.confirm("Are you sure you want to delete this vulnerability?");
-    if (!confirmed) return;
-
-    try {
-      const response = await fetch(`${config.API_BASE_URL}/api/vulnerabilities/${id}`, {
-        method: "DELETE",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || "Failed to delete vulnerability");
-      }
-
-      await fetchVulnerabilities(severityParam, statusParam);
-      setError('');
-
-    } catch (err) {
-      console.error("Delete failed:", err);
-      setError('Delete failed: ' + err.message);
-    }
-  };
-
-  const handleStatusToggle = async (id, newStatus) => {
-    try {
-      const res = await fetch(`${config.API_BASE_URL}/api/vulnerabilities/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP error! status: ${res.status}`);
-      }
-
-      await fetchVulnerabilities(severityParam, statusParam);
-      setError('');
-      
-    } catch (err) {
-      console.error('Failed to update status', err);
-      setError('Failed to update status: ' + err.message);
-    }
-  };
-
-  const renderSeverityBadge = severity => {
-    switch (severity) {
-      case 'Critical':
-        return <Badge bg="danger">Critical</Badge>;
-      case 'High':
-        return <Badge bg="warning">High</Badge>;
-      case 'Medium':
-        return <Badge bg="info">Medium</Badge>;
-      case 'Low':
-      default:
-        return <Badge bg="secondary">Low</Badge>;
-    }
-  };
-
-  const renderCvssScoreBadge = score => {
-    if (score === null || score === undefined || isNaN(score)) {
-      return <Badge bg="secondary">N/A</Badge>;
-    }
-
-    let severity = "";
-    let color = "";
-
-    if (score <= 3.9) {
-      severity = "Low";
-      color = "secondary";
-    } else if (score <= 6.9) {
-      severity = "Medium";
-      color = "info";
-    } else if (score <= 8.9) {
-      severity = "High";
-      color = "warning";
-    } else {
-      severity = "Critical";
-      color = "danger";
-    }
-
-    return (
-      <Badge bg={color}>
-        {score.toFixed(1)} - {severity}
-      </Badge>
-    );
-  };
-
-  // Filter and search logic
-  useEffect(() => {
-    let filtered = [...vulns];
-
-    if (searchTerm) {
-      filtered = filtered.filter(vuln => {
-        const searchFields = [
-          vuln.title,
-          vuln.description,
-          vuln.cve,
-          vuln.severity,
-          vuln.status,
-          vuln.asset?.name,
-          vuln.device?.name,
-        ];
-        
-        return searchFields.some(field => 
-          field && String(field).toLowerCase().includes(searchTerm.toLowerCase())
-        );
-      });
-    }
-
-    if (statusFilter) {
-      filtered = filtered.filter(vuln => vuln.status === statusFilter);
-    }
-
-    if (severityFilter) {
-      filtered = filtered.filter(vuln => vuln.severity === severityFilter);
-    }
-
-    // Date filtering logic
-    if (dateFilter === 'custom' && (startDate || endDate)) {
-      filtered = filtered.filter(vuln => {
-        if (!vuln.discoveredDate) return false;
-        
-        const vulnDate = new Date(vuln.discoveredDate);
-        const start = startDate ? new Date(startDate) : null;
-        const end = endDate ? new Date(endDate) : null;
-        
-        if (start && end) {
-          return vulnDate >= start && vulnDate <= end;
-        } else if (start) {
-          return vulnDate >= start;
-        } else if (end) {
-          return vulnDate <= end;
-        }
-        return true;
-      });
-    } else if (dateFilter && dateFilter !== 'custom') {
-      const now = new Date();
-      const filterDate = new Date();
-      
-      switch (dateFilter) {
-        case 'today':
-          filterDate.setHours(0, 0, 0, 0);
-          filtered = filtered.filter(vuln => {
-            if (!vuln.discoveredDate) return false;
-            const vulnDate = new Date(vuln.discoveredDate);
-            return vulnDate >= filterDate;
-          });
-          break;
-        case 'week':
-          filterDate.setDate(now.getDate() - 7);
-          filtered = filtered.filter(vuln => {
-            if (!vuln.discoveredDate) return false;
-            return new Date(vuln.discoveredDate) >= filterDate;
-          });
-          break;
-        case 'month':
-          filterDate.setMonth(now.getMonth() - 1);
-          filtered = filtered.filter(vuln => {
-            if (!vuln.discoveredDate) return false;
-            return new Date(vuln.discoveredDate) >= filterDate;
-          });
-          break;
-        case 'quarter':
-          filterDate.setMonth(now.getMonth() - 3);
-          filtered = filtered.filter(vuln => {
-            if (!vuln.discoveredDate) return false;
-            return new Date(vuln.discoveredDate) >= filterDate;
-          });
-          break;
-        case 'year':
-          filterDate.setFullYear(now.getFullYear() - 1);
-          filtered = filtered.filter(vuln => {
-            if (!vuln.discoveredDate) return false;
-            return new Date(vuln.discoveredDate) >= filterDate;
-          });
-          break;
-        default:
-          break;
-      }
-    }
-
-    setFilteredVulns(filtered);
-    setCurrentPage(1);
-  }, [searchTerm, statusFilter, severityFilter, dateFilter, startDate, endDate, vulns]);
-
-  const exportToCSV = () => {
-    const csv = Papa.unparse(filteredVulns);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute('download', 'vulnerabilities_export.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // Pagination calculations
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentVulns = filteredVulns.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(filteredVulns.length / itemsPerPage);
-
-  // Smart pagination - show only relevant page numbers
-  const getPageNumbers = () => {
-    const pages = [];
-    const maxVisible = 5; // Maximum number of page buttons to show
-    
-    if (totalPages <= maxVisible) {
-      // Show all pages if total is less than max
-      for (let i = 1; i <= totalPages; i++) {
-        pages.push(i);
-      }
-    } else {
-      // Always show first page
-      pages.push(1);
-      
-      // Calculate range around current page
-      let startPage = Math.max(2, currentPage - 1);
-      let endPage = Math.min(totalPages - 1, currentPage + 1);
-      
-      // Adjust range if at the beginning or end
-      if (currentPage <= 3) {
-        endPage = 4;
-      } else if (currentPage >= totalPages - 2) {
-        startPage = totalPages - 3;
-      }
-      
-      // Add ellipsis after first page if needed
-      if (startPage > 2) {
-        pages.push('...');
-      }
-      
-      // Add middle pages
-      for (let i = startPage; i <= endPage; i++) {
-        pages.push(i);
-      }
-      
-      // Add ellipsis before last page if needed
-      if (endPage < totalPages - 1) {
-        pages.push('...');
-      }
-      
-      // Always show last page
-      pages.push(totalPages);
-    }
-    
-    return pages;
-  };
-
-  if (loading) {
-    return (
-      <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '50vh' }}>
-        <Spinner animation="border" role="status">
-          <span className="visually-hidden">Loading...</span>
-        </Spinner>
-      </div>
-    );
+  if (loading && vulns.length === 0) {
+    return <div className="vm-page" style={{ padding: 40 }}><p style={{ color: 'var(--vm-text-muted)' }}>Loading vulnerabilities…</p></div>;
   }
 
   return (
-    <div className="container mt-4" style={{ backgroundColor: '#F1F8FD'}}>
-      {error && (
-        <div className="alert alert-danger mb-3" role="alert">
-          {error}
+    <div className="vm-page" style={{ padding: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+        <div>
+          <h1 className="vm-page-title"><FaBug /> {t('Vulnerabilities')}</h1>
+          <p className="vm-section-sub" style={{ margin: 0 }}>Risk-prioritized findings with remediation & SLA tracking</p>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="vm-badge ghost" style={btn} onClick={load}><FaSyncAlt /> Refresh</button>
+          <button className="vm-badge ghost" style={btn} onClick={() => { setShowImport(true); setImportResult(null); setImportContent(''); setImportFileName(''); }}><FaFileImport /> Import</button>
+          <button className="vm-badge ghost" style={btn} onClick={() => exportVulnerabilitiesCsv()}><FaFileCsv /> Export</button>
+          <button className="vm-badge" style={{ ...btn, background: 'var(--vm-primary)', color: '#fff' }} onClick={openCreate}><FaPlus /> Add</button>
+        </div>
+      </div>
+
+      {error && <div className="vm-card" style={{ borderColor: 'var(--vm-high)', color: 'var(--vm-high)', marginBottom: 16 }}>{error}</div>}
+
+      <div className="vm-kpi-grid" style={{ marginBottom: 16 }}>
+        <div className="vm-kpi"><div className="vm-kpi-n">{kpis.open}</div><div className="vm-kpi-l">Open</div></div>
+        <div className="vm-kpi"><div className="vm-kpi-n" style={{ color: '#b42318' }}>{kpis.critical}</div><div className="vm-kpi-l">Critical</div></div>
+        <div className="vm-kpi"><div className="vm-kpi-n" style={{ color: '#7a2e0e' }}>{kpis.kev}</div><div className="vm-kpi-l"><FaFireAlt /> Known-exploited</div></div>
+        <div className="vm-kpi"><div className="vm-kpi-n" style={{ color: '#b54708' }}>{kpis.breached}</div><div className="vm-kpi-l"><FaClock /> SLA breached</div></div>
+        <div className="vm-kpi"><div className="vm-kpi-n">{kpis.total}</div><div className="vm-kpi-l">Total</div></div>
+      </div>
+
+      {/* Filters */}
+      <div className="vm-card" style={{ marginBottom: 16, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input placeholder="Search title, CVE, asset…" value={search} onChange={e => setSearch(e.target.value)} style={{ ...inp, flex: 1, minWidth: 200 }} />
+        <select value={severity} onChange={e => setSeverity(e.target.value)} style={inp}>
+          <option value="">All severities</option>{SEVERITIES.map(s => <option key={s}>{s}</option>)}
+        </select>
+        <select value={status} onChange={e => setStatus(e.target.value)} style={inp}>
+          <option value="">All statuses</option>{STATUSES.map(s => <option key={s}>{s}</option>)}
+        </select>
+        <label style={chk}><input type="checkbox" checked={kevOnly} onChange={e => setKevOnly(e.target.checked)} /> KEV only</label>
+        <label style={chk}><input type="checkbox" checked={breachedOnly} onChange={e => setBreachedOnly(e.target.checked)} /> SLA breached</label>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginLeft: 'auto' }}>
+          <select defaultValue="" onChange={e => { if (e.target.value) applyView(e.target.value); }} style={{ ...inp, padding: '6px 8px' }} title="Saved views">
+            <option value="">Saved views…</option>
+            {savedViews.map(v => <option key={v.name} value={v.name}>{v.name}</option>)}
+          </select>
+          <button className="vm-badge ghost" style={btn} onClick={saveCurrentView} title="Save current filters as a view">★ Save</button>
+          {savedViews.length > 0 && (
+            <button className="vm-badge ghost" style={{ ...btn, color: 'var(--vm-high)' }} title="Delete a saved view"
+              onClick={() => { const n = window.prompt('Delete which view? (exact name)'); if (n) deleteView(n.trim()); }}>✕</button>
+          )}
+        </div>
+      </div>
+
+      {/* Bulk bar */}
+      {selected.size > 0 && (
+        <div className="vm-card" style={{ marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center', background: 'var(--vm-primary-weak)' }}>
+          <strong>{selected.size} selected</strong>
+          <select onChange={e => e.target.value && doBulk({ status: e.target.value })} defaultValue="" style={inp}>
+            <option value="" disabled>Set status…</option>{STATUSES.map(s => <option key={s}>{s}</option>)}
+          </select>
+          <button className="vm-badge ghost" style={btn} onClick={() => setSelected(new Set())}>Clear</button>
         </div>
       )}
-      
-      <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap">
-        <h3 style={{ color: '#1594EA' }} className="mb-4 d-flex align-items-center">
-          <FaBug className="me-2" />Vulnerability List
-        </h3>
-        <Button
-          style={{
-            backgroundColor: '#1594EA',
-            border: 'none',
-            color: '#fff',
-          }}
-          onClick={openCreateModal}
-          className="d-flex align-items-center gap-2 px-3 shadow-sm"
-        >
-          <FaPlus /> Add New
-        </Button>
-      </div>
 
-      {/* Search & Filter Bar */}
-      <div className="d-flex flex-wrap gap-2 mb-3">
-        <Form.Control
-          type="search"
-          placeholder="Search vulnerabilities..."
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-          style={{ maxWidth: '250px' }}
-        />
-        <Form.Select
-          value={severityFilter}
-          onChange={e => setSeverityFilter(e.target.value)}
-          style={{ maxWidth: '150px' }}
-        >
-          <option value="">All Severities</option>
-          <option value="Critical">Critical</option>
-          <option value="High">High</option>
-          <option value="Medium">Medium</option>
-          <option value="Low">Low</option>
-        </Form.Select>
-        <Form.Select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
-          style={{ maxWidth: '150px' }}
-        >
-          <option value="">All Statuses</option>
-          {ALL_VULN_STATUSES.map(s => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </Form.Select>
-        <Form.Select
-          value={dateFilter}
-          onChange={e => {
-            setDateFilter(e.target.value);
-            if (e.target.value !== 'custom') {
-              setStartDate('');
-              setEndDate('');
-            }
-          }}
-          style={{ maxWidth: '150px' }}
-        >
-          <option value="">All Dates</option>
-          <option value="today">Today</option>
-          <option value="week">Last 7 Days</option>
-          <option value="month">Last Month</option>
-          <option value="quarter">Last Quarter</option>
-          <option value="year">Last Year</option>
-          <option value="custom">Custom Range</option>
-        </Form.Select>
-        {dateFilter === 'custom' && (
-          <>
-            <Form.Control
-              type="date"
-              placeholder="Start Date"
-              value={startDate}
-              onChange={e => setStartDate(e.target.value)}
-              style={{ maxWidth: '150px' }}
-            />
-            <Form.Control
-              type="date"
-              placeholder="End Date"
-              value={endDate}
-              onChange={e => setEndDate(e.target.value)}
-              style={{ maxWidth: '150px' }}
-            />
-          </>
-        )}
-        <Form.Select
-          value={itemsPerPage}
-          onChange={e => {
-            setItemsPerPage(Number(e.target.value));
-            setCurrentPage(1);
-          }}
-          style={{ maxWidth: '120px' }}
-        >
-          <option value={5}>5 per page</option>
-          <option value={10}>10 per page</option>
-          <option value={25}>25 per page</option>
-          <option value={50}>50 per page</option>
-          <option value={100}>100 per page</option>
-        </Form.Select>
-        <Button
-          size="sm"
-          variant="outline-success"
-          onClick={exportToCSV}
-          className="d-flex align-items-center gap-1"
-        >
-          <FaDownload /> Export CSV
-        </Button>
-        <Button
-          size="sm"
-          variant="outline-info"
-          onClick={() => fetchVulnerabilities(severityParam, statusParam)}
-          className="d-flex align-items-center gap-1"
-        >
-          <FaSyncAlt /> Refresh
-        </Button>
-      </div>
-
-      <Card>
-        <Card.Body>
-          <Table responsive hover>
-            <thead style={{ backgroundColor: '#1594EA', color: '#fff' }}>
-              <tr>
-                <th>Title</th>
-                <th>Severity</th>
-                <th>CVSS Score</th>
-                <th>Status</th>
-                <th>Asset</th>
-                <th>CVE</th>
-                <th>Discovery Date</th>
-                <th>Remediation</th>
-                <th className="text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {currentVulns.length === 0 ? (
-                <tr>
-                  <td colSpan="9" className="text-center text-muted py-4">
-                    No vulnerabilities found
+      <div className="vm-card" style={{ padding: 0, overflowX: 'auto' }}>
+        <table className="vm-table">
+          <thead>
+            <tr>
+              <th><input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0} onChange={toggleAll} /></th>
+              <th>Finding</th><th>Severity</th><th>Risk</th><th>EPSS</th><th>Asset</th>
+              <th>Status</th><th>Due / SLA</th><th>Owner</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {paged.map(v => {
+              const target = v.asset || v.device;
+              const breached = isBreached(v);
+              return (
+                <tr key={v._id}>
+                  <td><input type="checkbox" checked={selected.has(v._id)} onChange={() => toggleSel(v._id)} /></td>
+                  <td>
+                    <div style={{ fontWeight: 600, cursor: 'pointer' }} className="vm-link" onClick={() => openDetail(v)} title="View details">{v.title}</div>
+                    <div style={{ fontSize: 12, color: 'var(--vm-text-muted)' }}>
+                      {v.cve || 'no CVE'} {v.knownExploited && <span className="vm-badge kev" style={{ marginLeft: 6 }}><FaFireAlt /> KEV</span>}
+                    </div>
+                  </td>
+                  <td><span className={`vm-badge ${sevClass(v.severity)}`}>{v.severity}</span></td>
+                  <td>
+                    <span className="vm-risk">
+                      <span className="vm-risk-bar"><span className="vm-risk-fill" style={{ width: `${((v.riskScore || 0) / 10) * 100}%`, background: riskColor(v.riskScore || 0) }} /></span>
+                      <strong style={{ color: riskColor(v.riskScore || 0) }}>{v.riskScore ?? '—'}</strong>
+                    </span>
+                  </td>
+                  <td>{v.epssScore != null ? `${Math.round(v.epssScore * 100)}%` : '—'}</td>
+                  <td>{target ? <>{target.name}<div style={{ fontSize: 12, color: 'var(--vm-text-muted)' }}>{target.ip}</div></> : '—'}</td>
+                  <td>
+                    <select value={v.status} onChange={e => changeStatus(v, e.target.value)} style={{ ...inp, padding: '4px 8px', fontSize: 13 }}>
+                      {STATUSES.map(s => <option key={s}>{s}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    {v.dueDate ? (
+                      <span style={{ color: breached ? 'var(--vm-high)' : 'var(--vm-text-muted)', fontWeight: breached ? 700 : 400 }}>
+                        {breached && <FaExclamationTriangle />} {new Date(v.dueDate).toISOString().slice(0, 10)}
+                      </span>
+                    ) : '—'}
+                  </td>
+                  <td>
+                    <select value={v.assignedTo?._id || v.assignedTo || ''} onChange={e => changeAssignee(v, e.target.value)} style={{ ...inp, padding: '4px 8px', fontSize: 13, maxWidth: 120 }}>
+                      <option value="">Unassigned</option>
+                      {users.map(u => <option key={u._id} value={u._id}>{u.name}</option>)}
+                    </select>
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <button className="vm-badge ghost" style={iconBtn} onClick={() => openDetail(v)} title="Details"><FaInfoCircle /></button>
+                    <button className="vm-badge ghost" style={iconBtn} onClick={() => openEdit(v)} title="Edit"><FaEdit /></button>
+                    <button className="vm-badge ghost" style={{ ...iconBtn, color: 'var(--vm-high)' }} onClick={() => remove(v)} title="Delete"><FaTrash /></button>
                   </td>
                 </tr>
-              ) : (
-                currentVulns.map(v => (
-                  <tr key={v._id}>
-                    <td>
-                      <strong>{v.title}</strong>
-                      {v.description && (
-                        <div className="text-muted small">{v.description}</div>
-                      )}
-                    </td>
-                    <td>{renderSeverityBadge(v.severity)}</td>
-                    <td>{renderCvssScoreBadge(v.cvssScore)}</td>
-                    <td>
-                      <Dropdown>
-                        <Dropdown.Toggle
-                          variant={statusToVariant(v.status)}
-                          size="sm"
-                        >
-                          {v.status}
-                        </Dropdown.Toggle>
-                        <Dropdown.Menu>
-                          {ALL_VULN_STATUSES.map(status => (
-                            <Dropdown.Item
-                              key={status}
-                              onClick={() => handleStatusToggle(v._id, status)}
-                            >
-                              {status}
-                            </Dropdown.Item>
-                          ))}
-                        </Dropdown.Menu>
-                      </Dropdown>
-                    </td>
-                    <td>
-                      <strong>
-                        {v.asset
-                          ? (
-                            <>
-                              {v.asset.name}<br/>
-                              {v.asset.ip && <code>{v.asset.ip}</code>}
-                            </>
-                          )
-                          : v.device
-                          ? (
-                            <>
-                              {v.device.name}<br/>
-                              {v.device.ip && <code>{v.device.ip}</code>}
-                            </>
-                          )
-                          : "N/A"}
-                      </strong>
-                    </td>
-                    <td><div className="small">{v.cve}</div></td>
-                    <td><div className="small">{v.discoveredDate?.slice(0, 10)}</div></td>
-                    <td><div className="small">{v.remediation}</div></td>
-                    <td className="text-center">
-                      <ButtonGroup size="sm">
-                        <Button 
-                          style={{
-                            borderColor: '#1594EA',
-                            color: '#1594EA',
-                          }} 
-                          variant="outline-secondary" 
-                          onClick={() => openEditModal(v)} 
-                          className="d-flex align-items-center gap-1 edit-btn"
-                        >
-                          <FaEdit />
-                        </Button>
-                        <Button 
-                          variant="outline-danger" 
-                          onClick={() => handleDelete(v._id)}
-                        >
-                          <FaTrash />
-                        </Button>
-                      </ButtonGroup>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </Table>
+              );
+            })}
+            {filtered.length === 0 && <tr><td colSpan={10} style={{ color: 'var(--vm-text-muted)', padding: 24, textAlign: 'center' }}>No vulnerabilities match your filters.</td></tr>}
+          </tbody>
+        </table>
+        <div style={{ padding: '0 0.5rem 0.5rem' }}>
+          <BsPagination currentPage={page} totalItems={filtered.length} itemsPerPage={pageSize} onPageChange={setPage} onPageSizeChange={(s) => { setPageSize(s); setPage(1); }} label="findings" />
+        </div>
+      </div>
 
-          {/* Enhanced Pagination */}
-          {totalPages > 1 && (
-            <div className="d-flex flex-column flex-md-row justify-content-between align-items-center mt-3 gap-3">
-              <div className="text-muted">
-                Showing <strong>{indexOfFirstItem + 1}</strong> to{' '}
-                <strong>{Math.min(indexOfLastItem, filteredVulns.length)}</strong> of{' '}
-                <strong>{filteredVulns.length}</strong> vulnerabilities
+      {/* Create / Edit modal */}
+      <Modal show={showModal} onHide={() => setShowModal(false)} centered>
+        <Modal.Header closeButton><Modal.Title>{editId ? 'Edit' : 'Add'} vulnerability</Modal.Title></Modal.Header>
+        <Form onSubmit={submit}>
+          <Modal.Body>
+            <Form.Group className="mb-2"><Form.Label>Title</Form.Label>
+              <Form.Control required value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} /></Form.Group>
+            <div className="d-flex gap-2">
+              <Form.Group className="mb-2 flex-fill"><Form.Label>Severity</Form.Label>
+                <Form.Select value={form.severity} onChange={e => setForm({ ...form, severity: e.target.value })}>{SEVERITIES.map(s => <option key={s}>{s}</option>)}</Form.Select></Form.Group>
+              <Form.Group className="mb-2 flex-fill"><Form.Label>CVSS</Form.Label>
+                <Form.Control type="number" step="0.1" min="0" max="10" value={form.cvssScore} onChange={e => setForm({ ...form, cvssScore: e.target.value })} /></Form.Group>
+              <Form.Group className="mb-2 flex-fill"><Form.Label>Status</Form.Label>
+                <Form.Select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>{STATUSES.map(s => <option key={s}>{s}</option>)}</Form.Select></Form.Group>
+            </div>
+            <div className="d-flex gap-2">
+              <Form.Group className="mb-2 flex-fill"><Form.Label>Asset</Form.Label>
+                <Form.Select value={form.asset} onChange={e => setForm({ ...form, asset: e.target.value, device: '' })}>
+                  <option value="">—</option>{assets.map(a => <option key={a._id} value={a._id}>{a.name} ({a.ip})</option>)}</Form.Select></Form.Group>
+              <Form.Group className="mb-2 flex-fill"><Form.Label>Device</Form.Label>
+                <Form.Select value={form.device} onChange={e => setForm({ ...form, device: e.target.value, asset: '' })}>
+                  <option value="">—</option>{devices.map(d => <option key={d._id} value={d._id}>{d.name} ({d.ip})</option>)}</Form.Select></Form.Group>
+            </div>
+            <Form.Group className="mb-2"><Form.Label>CVE</Form.Label>
+              <Form.Control value={form.cve} onChange={e => setForm({ ...form, cve: e.target.value })} placeholder="CVE-2024-…" /></Form.Group>
+            <Form.Group className="mb-2"><Form.Label>Description</Form.Label>
+              <Form.Control as="textarea" rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></Form.Group>
+            <Form.Group className="mb-2"><Form.Label>Remediation</Form.Label>
+              <Form.Control as="textarea" rows={2} value={form.remediation} onChange={e => setForm({ ...form, remediation: e.target.value })} /></Form.Group>
+            <Form.Check label="Exploit available" checked={form.exploitAvailable} onChange={e => setForm({ ...form, exploitAvailable: e.target.checked })} />
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
+            <Button type="submit" disabled={submitting}>{submitting ? 'Saving…' : (editId ? 'Save' : 'Create')}</Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
+
+      {/* Detail pane (top-tool style: Overview / Remediation / References / Activity) */}
+      {detail && (
+        <Modal show={!!detail} onHide={() => setDetail(null)} size="lg" centered scrollable>
+          <Modal.Header closeButton>
+            <div style={{ width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span className={`vm-badge ${sevClass(detail.severity)}`}>{detail.severity}</span>
+                {detail.knownExploited && <span className="vm-badge kev"><FaFireAlt /> KEV</span>}
+                <Modal.Title style={{ fontSize: 18 }}>{detail.title}</Modal.Title>
               </div>
-              
-              <Pagination className="mb-0">
-                {/* First Page */}
-                <Pagination.First 
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage(1)}
-                  title="First Page"
-                />
-                
-                {/* Previous Page */}
-                <Pagination.Prev 
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage(currentPage - 1)}
-                  title="Previous Page"
-                />
-                
-                {/* Page Numbers */}
-                {getPageNumbers().map((page, index) => {
-                  if (page === '...') {
-                    return (
-                      <Pagination.Ellipsis 
-                        key={`ellipsis-${index}`} 
-                        disabled 
-                      />
-                    );
-                  }
-                  
-                  return (
-                    <Pagination.Item
-                      key={page}
-                      active={page === currentPage}
-                      onClick={() => setCurrentPage(page)}
-                    >
-                      {page}
-                    </Pagination.Item>
-                  );
-                })}
-                
-                {/* Next Page */}
-                <Pagination.Next
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage(currentPage + 1)}
-                  title="Next Page"
-                />
-                
-                {/* Last Page */}
-                <Pagination.Last
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage(totalPages)}
-                  title="Last Page"
-                />
-              </Pagination>
+              <div style={{ fontSize: 12, color: 'var(--vm-text-muted)', marginTop: 4 }}>{detail.cve || 'No CVE'}</div>
+            </div>
+          </Modal.Header>
+          <Modal.Body>
+            {/* Risk strip */}
+            <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+              <div>
+                <div style={mLabel}>Risk</div>
+                <span className="vm-risk">
+                  <span className="vm-risk-bar" style={{ width: 90 }}><span className="vm-risk-fill" style={{ width: `${((detail.riskScore || 0) / 10) * 100}%`, background: riskColor(detail.riskScore || 0) }} /></span>
+                  <strong style={{ color: riskColor(detail.riskScore || 0) }}>{detail.riskScore ?? '—'}</strong>
+                </span>
+              </div>
+              <div><div style={mLabel}>CVSS</div><strong>{detail.cvssScore ?? '—'}</strong></div>
+              <div><div style={mLabel}>EPSS</div><strong>{detail.epssScore != null ? `${Math.round(detail.epssScore * 100)}%` : '—'}</strong></div>
+              <div><div style={mLabel}>Exploited (KEV)</div><strong style={{ color: detail.knownExploited ? 'var(--vm-kev)' : 'inherit' }}>{detail.knownExploited ? 'Yes' : 'No'}</strong></div>
+            </div>
+
+            <Tabs activeKey={detailTab} onSelect={k => setDetailTab(k)} className="mb-3">
+              <Tab eventKey="overview" title="Overview">
+                <div style={metaGrid}>
+                  <Field label="Status">
+                    <select value={detail.status} onChange={e => changeStatus(detail, e.target.value)} style={{ ...inp, padding: '4px 8px' }}>
+                      {STATUSES.map(s => <option key={s}>{s}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Assignee">
+                    <select value={detail.assignedTo?._id || detail.assignedTo || ''} onChange={e => changeAssignee(detail, e.target.value)} style={{ ...inp, padding: '4px 8px' }}>
+                      <option value="">Unassigned</option>
+                      {users.map(u => <option key={u._id} value={u._id}>{u.name}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Affected target">{(detail.asset || detail.device) ? `${(detail.asset || detail.device).name} (${(detail.asset || detail.device).ip})` : '—'}</Field>
+                  <Field label="Affected product">{(detail.affectedProducts || []).join(', ') || detail.cpeMatch || '—'}</Field>
+                  <Field label="First detected">{detail.firstDetected ? new Date(detail.firstDetected).toLocaleString() : (detail.discoveredDate ? new Date(detail.discoveredDate).toLocaleString() : '—')}</Field>
+                  <Field label="SLA due">
+                    {detail.dueDate
+                      ? <span style={{ color: isBreached(detail) ? 'var(--vm-high)' : 'inherit', fontWeight: isBreached(detail) ? 700 : 400 }}>{new Date(detail.dueDate).toLocaleDateString()}{isBreached(detail) ? ' (breached)' : ''}</span>
+                      : '—'}
+                  </Field>
+                  <Field label="Compliance">
+                    {(detail.complianceTags || []).length ? (detail.complianceTags.map(t => <span key={t} className="vm-badge ghost" style={{ marginRight: 4, marginBottom: 4 }}>{t}</span>)) : '—'}
+                  </Field>
+                </div>
+                <div style={{ marginTop: 14 }}>
+                  <div style={mLabel}>Description</div>
+                  <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{detail.description || 'No description available.'}</div>
+                </div>
+              </Tab>
+
+              <Tab eventKey="remediation" title="Remediation">
+                <div style={{ marginTop: 4 }}>
+                  <div style={mLabel}><FaShieldAlt /> Recommended fix</div>
+                  <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{detail.remediation || 'Review the vulnerability details and apply the vendor patch or mitigation.'}</div>
+                  {(detail.knownExploited || detail.exploitAvailable) && (
+                    <div className="vm-card" style={{ marginTop: 12, borderColor: 'var(--vm-kev)', color: 'var(--vm-kev)' }}>
+                      <FaFireAlt /> This vulnerability is <strong>actively exploited / has a known exploit</strong> — prioritize remediation (accelerated SLA applies).
+                    </div>
+                  )}
+                </div>
+              </Tab>
+
+              <Tab eventKey="references" title={`References (${(detail.references || []).length})`}>
+                <ul style={{ marginTop: 8, paddingLeft: 18, lineHeight: 1.8 }}>
+                  {detail.cve && <li><a href={`https://nvd.nist.gov/vuln/detail/${detail.cve}`} target="_blank" rel="noreferrer">NVD — {detail.cve} <FaExternalLinkAlt size={11} /></a></li>}
+                  {(detail.references || []).map((r, i) => (
+                    <li key={i}><a href={r} target="_blank" rel="noreferrer" style={{ wordBreak: 'break-all' }}>{r} <FaExternalLinkAlt size={11} /></a></li>
+                  ))}
+                  {(detail.references || []).length === 0 && !detail.cve && <li style={{ color: 'var(--vm-text-muted)' }}>No references.</li>}
+                </ul>
+              </Tab>
+
+              <Tab eventKey="activity" title={`Activity (${(detail.notes || []).length})`}>
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                    <input value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Add a note / comment…" style={{ ...inp, flex: 1 }} onKeyDown={e => e.key === 'Enter' && submitNote()} />
+                    <Button onClick={submitNote} disabled={!noteText.trim()}><FaHistory /> Add</Button>
+                  </div>
+                  {(detail.notes || []).length === 0 && <div style={{ color: 'var(--vm-text-muted)' }}>No activity yet.</div>}
+                  {(detail.notes || []).slice().reverse().map((n, i) => (
+                    <div key={i} style={{ borderLeft: '2px solid var(--vm-border)', paddingLeft: 12, marginBottom: 12 }}>
+                      <div style={{ fontSize: 12, color: 'var(--vm-text-muted)' }}>{userName(n.by) || 'User'} · {n.at ? new Date(n.at).toLocaleString() : ''}</div>
+                      <div>{n.text}</div>
+                    </div>
+                  ))}
+                </div>
+              </Tab>
+            </Tabs>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="outline-secondary" onClick={() => { openEdit(detail); setDetail(null); }}><FaEdit /> Edit</Button>
+            <Button variant="secondary" onClick={() => setDetail(null)}>Close</Button>
+          </Modal.Footer>
+        </Modal>
+      )}
+
+      {/* Import scan (Nessus / OpenVAS) */}
+      <Modal show={showImport} onHide={() => setShowImport(false)} centered>
+        <Modal.Header closeButton><Modal.Title><FaFileImport /> Import scan results</Modal.Title></Modal.Header>
+        <Modal.Body>
+          <p style={{ color: 'var(--vm-text-muted)', fontSize: 13 }}>
+            Upload a <strong>Nessus (.nessus)</strong>, <strong>OpenVAS/Greenbone XML</strong>, or an
+            <strong> OpenVAS/Greenbone PDF report</strong>. Hosts become assets and findings are added
+            to the register (de-duplicated). PDF extraction is best-effort — XML is more accurate.
+          </p>
+          <div className="d-flex gap-2 mb-2">
+            <Form.Select value={importFormat} onChange={e => setImportFormat(e.target.value)} style={{ maxWidth: 200 }} disabled={importIsPdf}>
+              <option value="auto">Auto-detect format</option>
+              <option value="nessus">Nessus (.nessus)</option>
+              <option value="openvas">OpenVAS / Greenbone XML</option>
+            </Form.Select>
+            <Form.Control type="file" accept=".nessus,.xml,text/xml,.pdf,application/pdf" onChange={onImportFile} />
+          </div>
+          {importFileName && <div style={{ fontSize: 13, color: 'var(--vm-text-muted)' }}>Loaded: {importFileName} {importIsPdf && <span className="vm-badge ghost">PDF</span>}</div>}
+          {importResult && (
+            <div className="vm-card" style={{ marginTop: 12, borderColor: importResult.error ? 'var(--vm-high)' : 'var(--vm-border)' }}>
+              {importResult.error
+                ? <span style={{ color: 'var(--vm-high)' }}>{importResult.error}</span>
+                : <span>Imported <strong>{importResult.format}</strong>: {importResult.findings} findings → <strong>{importResult.created}</strong> new, {importResult.updated} updated, {importResult.newAssets} new asset(s).</span>}
             </div>
           )}
-        </Card.Body>
-      </Card>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowImport(false)}>Close</Button>
+          <Button onClick={runImport} disabled={importing || !importContent.trim()}>{importing ? 'Importing…' : 'Import'}</Button>
+        </Modal.Footer>
+      </Modal>
+    </div>
+  );
+}
 
-      {/* Create/Edit Modal */}
-      <Modal show={showModal} onHide={() => setShowModal(false)}>
-        <Modal.Header
-          closeButton
-          style={{ backgroundColor: '#1594EA', color: '#fff' }}
-        >
-          <Modal.Title>{isEditing ? 'Edit Vulnerability' : 'Add Vulnerability'}</Modal.Title>
-        </Modal.Header>
-        <Modal.Body style={{ backgroundColor: '#F0F9FF' }}>
-          <Form onSubmit={handleSubmit}>
-            <Form.Group className="mb-3">
-              <Form.Label>Title</Form.Label>
-              <Form.Control
-                name="title"
-                value={form.title}
-                onChange={handleChange}
-                required
-              />
-            </Form.Group>
+const Field = ({ label, children }) => (
+  <div>
+    <div style={mLabel}>{label}</div>
+    <div style={{ color: 'var(--vm-text)' }}>{children}</div>
+  </div>
+);
 
-            <Form.Group className="mb-3">
-              <Form.Label>CVE ID</Form.Label>
-              <Form.Control name="cve" value={form.cve} onChange={handleChange} />
-            </Form.Group>
-
-            <Form.Group className="mb-3">
-              <Form.Label>Severity</Form.Label>
-              <Form.Select
-                name="severity"
-                value={form.severity}
-                onChange={handleChange}
-              >
-                <option>Critical</option>
-                <option>High</option>
-                <option>Medium</option>
-                <option>Low</option>
-              </Form.Select>
-            </Form.Group>
-
-            <Form.Group className="mb-3">
-              <Form.Label>CVSS Score</Form.Label>
-              <Form.Control
-                type="number"
-                name="cvssScore"
-                step="0.1"
-                min="0"
-                max="10"
-                value={form.cvssScore}
-                onChange={handleChange}
-                placeholder="e.g. 7.5"
-              />
-              <Form.Text className="text-muted">
-                Enter a score between 0.0 and 10.0
-              </Form.Text>
-            </Form.Group>
-
-            <Form.Group className="mb-3">
-              <Form.Label>Status</Form.Label>
-              <Form.Select
-                name="status"
-                value={form.status}
-                onChange={handleChange}
-              >
-                {ALL_VULN_STATUSES.map(s => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </Form.Select>
-            </Form.Group>
-
-            <Form.Group className="mb-3">
-              <Form.Label>Discovery Date</Form.Label>
-                   <Form.Control type="date" name="discoveredDate" value={form.discoveredDate} onChange={handleChange} />
-                 </Form.Group>
-     
-                 <Form.Group className="mb-3">
-                   <Form.Label>Select Server Asset</Form.Label>
-                   <Form.Select
-                     name="asset"
-                     value={form.asset}
-                     onChange={handleChange}
-                   >
-                     <option value="">-- Select a Server Asset --</option>
-                     {assets.map(asset => (
-                       <option key={`asset-${asset._id}`} value={asset._id}>
-                         {asset.name} ({asset.ip})
-                       </option>
-                     ))}
-                   </Form.Select>
-                 </Form.Group>
-     
-                 {/* Device dropdowns */}
-                 <Form.Group className="mb-3">
-                   <Form.Label>or Select Network Device</Form.Label>
-                   <Form.Select
-                     name="device"
-                     value={form.device}
-                     onChange={(e) => {
-                       setForm(prev => ({
-                         ...prev,
-                         device: e.target.value,
-                         asset: e.target.value ? '' : prev.asset // Clear asset if device is selected
-                       }));
-                     }}
-                   >
-                     <option value="">-- Select a Network Device --</option>
-                     {devices.map(device => (
-                       <option key={device._id} value={device._id}>
-                         {device.name} ({device.ip})
-                       </option>
-                     ))}
-                   </Form.Select>
-                 </Form.Group>
-     
-                 <Form.Group className="mb-3">
-                   <Form.Label>Description</Form.Label>
-                   <Form.Control
-                     as="textarea"
-                     rows={3}
-                     name="description"
-                     value={form.description}
-                     onChange={handleChange}
-                   />
-                 </Form.Group>
-     
-                 <Form.Group className="mb-3">
-                   <Form.Label>Remediation</Form.Label>
-                   <Form.Control 
-                     as="textarea" 
-                     rows={2} 
-                     name="remediation" 
-                     value={form.remediation} 
-                     onChange={handleChange} 
-                   />
-                 </Form.Group>
-     
-                 <Form.Group className="mb-3">
-                   <Form.Check
-                     type="checkbox"
-                     label="Exploit Available"
-                     name="exploitAvailable"
-                     checked={form.exploitAvailable}
-                     onChange={handleChange}
-                   />
-                 </Form.Group>
-     
-                 <Form.Group className="mb-3">
-                   <Form.Label>References (comma-separated)</Form.Label>
-                   <Form.Control name="references" value={form.references} onChange={handleChange} />
-                 </Form.Group>
-     
-                 <div className="text-end">
-                   <Button
-                     variant="secondary"
-                     onClick={() => setShowModal(false)}
-                     className="me-2"
-                     disabled={isSubmitting}
-                   >
-                     Cancel
-                   </Button>
-                   <Button
-                     style={{ backgroundColor: '#1594EA', border: 'none' }}
-                     type="submit"
-                     disabled={isSubmitting}
-                   >
-                     {isSubmitting ? 'Saving...' : (isEditing ? 'Update' : 'Add')}
-                   </Button>
-                 </div>
-               </Form>
-             </Modal.Body>
-           </Modal>
-         </div>
-       );
-     };
-     
-     export default Vulnerabilities;
+const inp = { background: 'var(--vm-surface-2)', color: 'var(--vm-text)', border: '1px solid var(--vm-border)', borderRadius: 8, padding: '8px 10px' };
+const btn = { cursor: 'pointer' };
+const iconBtn = { cursor: 'pointer', marginRight: 4 };
+const chk = { display: 'flex', alignItems: 'center', gap: 6, color: 'var(--vm-text-muted)', fontSize: 14 };
+const mLabel = { fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--vm-text-muted)', marginBottom: 2 };
+const metaGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginTop: 4 };

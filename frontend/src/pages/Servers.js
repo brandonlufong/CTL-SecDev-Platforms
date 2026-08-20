@@ -655,7 +655,7 @@
 
 
 //   return (
-//     <div className="container mt-4" style={{ backgroundColor: '#F1F8FD', minHeight: '100vh' }}>
+//     <div className="vm-page-shell">
 //       {/* ADD THIS: Real-time Scan Progress Bar */}
 //       {/* <ScanProgressBar 
 //         scanProgress={scanProgress} 
@@ -671,7 +671,7 @@
 
 //       {/* Header Section */}
 //       <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap">
-//         <h3 style={{ color: '#1594EA' }} className="d-flex align-items-center"><FaServer className="me-2" />Server Assets</h3>
+//         <h3 className="vm-page-title"><FaServer />{t('Server Assets')}</h3>
 //         <div className="d-flex gap-2 flex-wrap">
 //           <ButtonGroup>
 //             <Button style={{ backgroundColor: '#1594EA' }} onClick={() => openCreateModal(true)}>
@@ -1299,6 +1299,7 @@
 
 // export default Servers;
 import React, { useState, useEffect, useContext } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Table, Button, Modal, Form, Alert, Spinner, Badge, Dropdown, Pagination, Row, Col, Card, ProgressBar, ButtonGroup
 } from 'react-bootstrap';
@@ -1311,6 +1312,7 @@ import Papa from 'papaparse';
 import '../App.css'
 import config from '../config';
 import { useSocket } from '../context/SocketContext';
+import { useT } from '../context/LanguageContext';
 import ScanProgressBar from '../components/ScanProgressBar';
 import { useScan } from '../context/ScanContext';
 import { useConnectivity } from '../hooks/useConnectivity';
@@ -1333,6 +1335,7 @@ const scanTypes = [
 ];
 
 const Servers = () => {
+  const t = useT();
   const { token } = useContext(AuthContext);
   const { isConnected, scanProgress, resetScanProgress, showScanResults } = useSocket(token);
 
@@ -1724,9 +1727,9 @@ const Servers = () => {
   }
 
   return (
-    <div className="container mt-4" style={{ backgroundColor: '#F1F8FD', minHeight: '100vh' }}>
+    <div className="vm-page-shell">
       <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap">
-        <h3 style={{ color: '#1594EA' }} className="d-flex align-items-center"><FaServer className="me-2" />Server Assets</h3>
+        <h3 className="vm-page-title"><FaServer />{t('Server Assets')}</h3>
         <div className="d-flex gap-2 flex-wrap">
           <ButtonGroup>
             <Button style={{ backgroundColor: '#1594EA' }} onClick={() => openCreateModal(true)}>
@@ -1896,7 +1899,9 @@ const Servers = () => {
                 currentAssets.map((asset) => (
                   <tr key={asset._id}>
                     <td>
-                      <strong>{asset.name}</strong>
+                      <Link to={`/assets/${asset._id}`} className="vm-link" style={{ fontWeight: 700, color: 'var(--vm-text)', textDecoration: 'none' }} title="View asset details">
+                        {asset.name}
+                      </Link>
                       {asset.description && (
                         <div className="text-muted small">{asset.description}</div>
                       )}

@@ -3,12 +3,20 @@
 @tailwind utilities; */
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  /* High-end typography: Plus Jakarta Sans, with a clean system fallback. */
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.011em; /* subtle optical tightening for a refined feel */
 }
+
+/* Apply the premium typeface to Bootstrap-driven components too. */
+.btn, .form-control, .form-select, .nav, .navbar, .card, .table, .badge, .modal,
+h1, h2, h3, h4, h5, h6, .dropdown-menu {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+h1, h2, h3, h4, h5, h6 { letter-spacing: -0.02em; font-weight: 600; }
 
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',

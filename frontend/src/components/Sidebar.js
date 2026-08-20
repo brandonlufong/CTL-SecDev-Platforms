@@ -36,10 +36,12 @@ import {
   FaChevronLeft
 } from 'react-icons/fa';
 import { AuthContext } from '../context/AuthContext';
+import { useT } from '../context/LanguageContext';
 import { getNavigationItems, hasNavigationPermission } from '../config/navigationConfig';
 
 const Sidebar = ({ onSubmenuToggle, activeSubmenu, isSubmenuOpen, onScanHistoryToggle }) => {
   const { user } = useContext(AuthContext);
+  const t = useT();
   const location = useLocation();
   const [hoveredItem, setHoveredItem] = useState(null);
 
@@ -108,10 +110,10 @@ const Sidebar = ({ onSubmenuToggle, activeSubmenu, isSubmenuOpen, onScanHistoryT
     const tooltip = (
       <Tooltip id={`tooltip-${item.name}`} placement="right">
         <div style={{ textAlign: 'left', padding: '4px 0' }}>
-          <strong>{item.name}</strong>
+          <strong>{t(item.name)}</strong>
           {item.description && (
             <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '2px' }}>
-              {item.description}
+              {t(item.description)}
             </div>
           )}
         </div>
